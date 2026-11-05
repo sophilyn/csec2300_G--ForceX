@@ -1,0 +1,5 @@
+Networking Class Notes
+
+A router forwards traffic between networks.
+A switch connects devices within a local area network.
+The fictional lab network is named Bluebird.
