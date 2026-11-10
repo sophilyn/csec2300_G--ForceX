@@ -1,0 +1,119 @@
+# G-ForceX security gates. Every job must pass before a pull request can merge
+# (after "Require status checks" is enabled for main in branch protection).
+# Supply-chain hardening: actions pinned to commit SHAs, scanner images pinned to
+# digests, read-only token, and no third-party scanner actions.
+name: Security gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+  HADOLINT_IMAGE: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Allowlist and retry unit tests
+        run: python -m unittest discover -s agent/tests -t agent -v
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan full git history
+        run: docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" git /repo --redact --no-banner --exit-code 1
+
+  sast:
+    name: Python SAST (bandit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: pip install bandit==1.8.6
+      - name: Fail on medium or higher findings
+        run: bandit -r agent/gforcex_agent --severity-level medium --confidence-level medium
+
+  dependency-audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit==2.9.0
+      - name: Fail on any known vulnerability in agent dependencies
+        run: pip-audit -r agent/requirements.txt --progress-spinner off
+
+  dockerfile-and-compose:
+    name: Dockerfile lint and Compose validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: hadolint
+        run: docker run --rm -i "$HADOLINT_IMAGE" hadolint --failure-threshold warning - < agent/Dockerfile
+      - name: docker compose config
+        env:
+          WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+        run: docker compose config --quiet
+      - name: Agent must not publish host ports
+        env:
+          WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+        run: |
+          ports=$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["adk-agent"].get("ports", []))')
+          echo "adk-agent ports: $ports"
+          test "$ports" = "[]"
+
+  container-scan:
+    name: Container and config scan (trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build agent image
+        run: docker build -t gforcex-adk-agent:ci agent
+      - name: Misconfiguration scan (Dockerfile + Compose)
+        run: docker run --rm -v "$PWD:/src:ro" "$TRIVY_IMAGE" config --exit-code 1 --severity HIGH,CRITICAL /src
+      - name: Vulnerability scan of agent image (fail on fixable CRITICAL)
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE"
+          image --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress gforcex-adk-agent:ci
