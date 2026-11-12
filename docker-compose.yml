@@ -29,7 +29,9 @@ services:
       # Least privilege: only the approved document is mounted, read-only.
       # unapproved_policy.txt is never visible to the agent.
       - ./approved_class_notes.txt:/data/approved/approved_class_notes.txt:ro
-    # No "ports:" — the agent API is reachable only on the internal Docker network.
+    # DEMO ONLY (do not merge): exposes the agent API on the host to prove CI blocks it.
+    ports:
+      - "127.0.0.1:8000:8000"
     read_only: true
     tmpfs:
       - /tmp
