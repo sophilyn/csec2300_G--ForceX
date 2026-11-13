@@ -37,3 +37,35 @@ unit and real Ollama integration tests, then remove `--ignore-vuln GHSA-xcq7-p3p
 
 **Residual risk:** another container on the internal network, or a process given network access to it,
 could make the agent unresponsive for seconds at a time. No data exposure.
+
+## RA-002: opentelemetry-api quadratic-time `traceparent` parsing
+
+| Field | Value |
+|---|---|
+| Advisory | [GHSA-mf5v-w3w3-f6cg](https://github.com/advisories/GHSA-mf5v-w3w3-f6cg) / CVE-2026-126360 |
+| Severity | Medium, CVSS 5.3 (denial of service) |
+| Affected component | `opentelemetry-api` 1.41.1 (all versions up to 1.45.1), a dependency of `google-adk` 1.39.1 in the ADK agent image |
+| Found by | `pip-audit` in the Security gates workflow on PR #41, 2026-11-13 (advisory published the same day) |
+| Fixed version | 1.45.2, which `google-adk` 1.39.1 does not allow |
+| Decision | Accepted by the G-ForceX team (Karlie) on 2026-11-13 |
+| Review by | 2026-11-25 |
+
+**What the vulnerability is:** a crafted W3C `traceparent` HTTP header makes the parser use quadratic
+CPU time, slowing or blocking the agent's API server. It affects availability only, not
+confidentiality or integrity.
+
+**Why the risk is low here (compensating controls):** the same as RA-001. The agent publishes no host
+port (checked in CI), the project runs on one local machine with no public exposure, and the
+container is hardened (read-only filesystem, all capabilities dropped, `no-new-privileges`,
+non-root user, `restart: unless-stopped`).
+
+**Why not fix now:** the same as RA-001: the fix needs the `google-adk` 2.x upgrade. Note that
+`google-adk` 2.14.0 alone brings `opentelemetry-api` 1.45.1, which is **still affected** by this
+advisory, so the upgrade must also require `opentelemetry-api>=1.45.2`.
+
+**Exit plan:** do it together with RA-001: upgrade to `google-adk` 2.x, require
+`opentelemetry-api>=1.45.2`, rerun the unit, integration, and prompt-injection tests, then remove
+both `--ignore-vuln` flags from `.github/workflows/security-gates.yml` and close RA-001 and RA-002.
+
+**Residual risk:** another container on the internal network could make the agent unresponsive.
+No data exposure.
