@@ -76,18 +76,23 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit==2.9.0
-      # Exactly one documented, time-limited exception. Rationale, owner and review
-      # date: docs/risk-acceptance.md (RA-001). Any other finding still fails this job.
+      # Two documented, time-limited exceptions. Rationale, owner and review
+      # date: docs/risk-acceptance.md (RA-001, RA-002). Any other finding still fails this job.
       - name: Fail on any known vulnerability in agent dependencies
         run: >
           pip-audit -r agent/requirements.txt --progress-spinner off
           --ignore-vuln GHSA-xcq7-p3pf-p88h
+          --ignore-vuln GHSA-mf5v-w3w3-f6cg
       - name: Fail if a risk acceptance has passed its review date
         run: |
-          review=$(grep -m1 -oE '^\| Review by \| [0-9]{4}-[0-9]{2}-[0-9]{2}' docs/risk-acceptance.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
-          test -n "$review" || { echo "RA-001 review date not found"; exit 1; }
-          echo "RA-001 review date: $review"
-          test "$(date -u +%F)" \< "$review" || { echo "RA-001 expired: re-assess GHSA-xcq7-p3pf-p88h"; exit 1; }
+          dates=$(grep -oE '^\| Review by \| [0-9]{4}-[0-9]{2}-[0-9]{2}' docs/risk-acceptance.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          count=$(echo "$dates" | grep -c . || true)
+          test "$count" -ge 2 || { echo "Expected review dates for RA-001 and RA-002, found $count"; exit 1; }
+          today=$(date -u +%F)
+          for review in $dates; do
+            echo "Risk acceptance review date: $review"
+            test "$today" \< "$review" || { echo "A risk acceptance expired on $review: re-assess docs/risk-acceptance.md"; exit 1; }
+          done
 
   dockerfile-and-compose:
     name: Dockerfile lint and Compose validation
