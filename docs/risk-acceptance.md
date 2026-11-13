@@ -2,9 +2,13 @@
 
 Findings the team has reviewed and chosen to accept for a limited time instead of fixing now.
 Each entry is enforced in CI: the scanner ignores only the listed advisory ID, and the
-`Dependency audit` job fails once the review date is reached.
+`Dependency audit` job fails once the review date is reached. Closed entries are kept as a record:
+their ignore flag is removed from CI and their "Review by" row is replaced by a "Closed" row.
 
-## RA-001: opentelemetry-api unbounded `tracestate` parsing
+**Current status (2026-11-13): no open risk acceptances.** RA-001 and RA-002 were both closed by the
+`google-adk` 2.14.1 upgrade; `pip-audit` reports no known vulnerabilities with no ignores.
+
+## RA-001: opentelemetry-api unbounded `tracestate` parsing (CLOSED)
 
 | Field | Value |
 |---|---|
@@ -14,7 +18,7 @@ Each entry is enforced in CI: the scanner ignores only the listed advisory ID, a
 | Found by | `pip-audit` in the Security gates workflow, 2026-11-10 |
 | Fixed version | 1.45.1, which `google-adk` 1.39.1 does not allow; only `google-adk` 2.x does |
 | Decision | Accepted by the G-ForceX team (Karlie) on 2026-11-10 |
-| Review by | 2026-11-25 |
+| Closed | 2026-11-13: fixed by upgrading to `google-adk` 2.14.1 with `opentelemetry-api` 1.45.2 pinned |
 
 **What the vulnerability is:** a very long W3C `tracestate` HTTP header (about 100 KB of spaces or tabs)
 makes the parser use quadratic CPU, blocking the server for about 6–12 seconds per request.
@@ -38,7 +42,7 @@ unit and real Ollama integration tests, then remove `--ignore-vuln GHSA-xcq7-p3p
 **Residual risk:** another container on the internal network, or a process given network access to it,
 could make the agent unresponsive for seconds at a time. No data exposure.
 
-## RA-002: opentelemetry-api quadratic-time `traceparent` parsing
+## RA-002: opentelemetry-api quadratic-time `traceparent` parsing (CLOSED)
 
 | Field | Value |
 |---|---|
@@ -48,7 +52,7 @@ could make the agent unresponsive for seconds at a time. No data exposure.
 | Found by | `pip-audit` in the Security gates workflow on PR #41, 2026-11-13 (advisory published the same day) |
 | Fixed version | 1.45.2, which `google-adk` 1.39.1 does not allow |
 | Decision | Accepted by the G-ForceX team (Karlie) on 2026-11-13 |
-| Review by | 2026-11-25 |
+| Closed | 2026-11-13: fixed by upgrading to `google-adk` 2.14.1 with `opentelemetry-api` 1.45.2 pinned |
 
 **What the vulnerability is:** a crafted W3C `traceparent` HTTP header makes the parser use quadratic
 CPU time, slowing or blocking the agent's API server. It affects availability only, not
