@@ -76,18 +76,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit==2.9.0
-      # Two documented, time-limited exceptions. Rationale, owner and review
-      # date: docs/risk-acceptance.md (RA-001, RA-002). Any other finding still fails this job.
+      # No exceptions. Any accepted risk must be listed in docs/risk-acceptance.md with an
+      # open review date, and added here as --ignore-vuln <ID>.
       - name: Fail on any known vulnerability in agent dependencies
-        run: >
-          pip-audit -r agent/requirements.txt --progress-spinner off
-          --ignore-vuln GHSA-xcq7-p3pf-p88h
-          --ignore-vuln GHSA-mf5v-w3w3-f6cg
+        run: pip-audit -r agent/requirements.txt --progress-spinner off
       - name: Fail if a risk acceptance has passed its review date
         run: |
-          dates=$(grep -oE '^\| Review by \| [0-9]{4}-[0-9]{2}-[0-9]{2}' docs/risk-acceptance.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
-          count=$(echo "$dates" | grep -c . || true)
-          test "$count" -ge 2 || { echo "Expected review dates for RA-001 and RA-002, found $count"; exit 1; }
+          # Checks every open entry ("Review by" row). Closed entries use a "Closed" row instead.
+          dates=$(grep -oE '^\| Review by \| [0-9]{4}-[0-9]{2}-[0-9]{2}' docs/risk-acceptance.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
+          test -n "$dates" || echo "No open risk acceptances."
           today=$(date -u +%F)
           for review in $dates; do
             echo "Risk acceptance review date: $review"
