@@ -3,6 +3,9 @@ services:
     image: ollama/ollama:0.40.14
     volumes:
       - ollama_data:/root/.ollama
+    networks:
+      - webui_net   # Open WebUI <-> Ollama; also gives Ollama internet access to download models
+      - agent_net   # ADK agent <-> Ollama
     restart: unless-stopped
 
   open-webui:
@@ -14,6 +17,8 @@ services:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
     volumes:
       - webui_data:/app/backend/data
+    networks:
+      - webui_net   # not on agent_net, so Open WebUI cannot reach the ADK agent
     depends_on:
       - ollama
     restart: unless-stopped
@@ -30,6 +35,8 @@ services:
       # unapproved_policy.txt is never visible to the agent.
       - ./approved_class_notes.txt:/data/approved/approved_class_notes.txt:ro
     # No "ports:" — the agent API is reachable only on the internal Docker network.
+    networks:
+      - agent_net   # internal network: Ollama only, no internet, no Open WebUI
     read_only: true
     tmpfs:
       - /tmp
@@ -40,6 +47,12 @@ services:
     depends_on:
       - ollama
     restart: unless-stopped
+
+# Firewall segmentation (Control 1). See docs/network-firewall.md.
+networks:
+  webui_net: {}
+  agent_net:
+    internal: true   # Docker blocks all traffic between this network and the outside world
 
 volumes:
   ollama_data:
