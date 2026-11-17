@@ -113,6 +113,18 @@ jobs:
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
         run: docker compose config --format json | python3 tests/network/check_compose_network.py
+      # Audit logs (Control 2): every container's Docker logs must be size-limited.
+      # See docs/audit-logging.md.
+      - name: Container log size limits
+        env:
+          WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+        run: |
+          docker compose config --format json | python3 -c '
+          import json, sys
+          bad = [n for n, s in json.load(sys.stdin)["services"].items()
+                 if not (s.get("logging") or {}).get("options", {}).get("max-size")]
+          print("Services without log size limits:", bad or "none")
+          sys.exit(1 if bad else 0)'
 
   container-scan:
     name: Container and config scan (trivy)

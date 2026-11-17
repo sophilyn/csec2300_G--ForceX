@@ -8,25 +8,44 @@ import asyncio
 import json
 import logging
 import sys
+import time
+import uuid
 
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
 from .agent import root_agent
+from .audit import audit
 from .retry import looks_like_printed_tool_call
 
 APP = "gforcex"
 LOG = logging.getLogger("gforcex.run_query")
 
 
-async def ask(question: str) -> dict:
-    """Asks once; retries one time in a fresh session if the model printed its tool call."""
-    result = await _ask_once(question)
-    result["retried"] = False
-    if looks_like_printed_tool_call(result["answer"], result["tools_called"]):
-        LOG.warning("model printed a tool call as text; retrying once")
+async def ask(question: str, source: str = "cli") -> dict:
+    """Asks once; retries one time in a fresh session if the model printed its tool call.
+
+    Every query is audited: question received, retry, and outcome (answer length only).
+    """
+    query_id = uuid.uuid4().hex[:12]
+    started = time.monotonic()
+    audit("query_received", query_id=query_id, source=source, question=question,
+          question_chars=len(question))
+    try:
         result = await _ask_once(question)
-        result["retried"] = True
+        result["retried"] = False
+        if looks_like_printed_tool_call(result["answer"], result["tools_called"]):
+            LOG.warning("model printed a tool call as text; retrying once")
+            audit("query_retried", query_id=query_id, reason="tool call printed as text")
+            result = await _ask_once(question)
+            result["retried"] = True
+    except Exception as exc:
+        audit("query_failed", query_id=query_id, error=type(exc).__name__,
+              duration_ms=int((time.monotonic() - started) * 1000))
+        raise
+    audit("query_completed", query_id=query_id, tools_called=result["tools_called"],
+          retried=result["retried"], answer_chars=len(result["answer"]),
+          duration_ms=int((time.monotonic() - started) * 1000))
     return result
 
 
