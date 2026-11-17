@@ -36,6 +36,8 @@ jobs:
           python-version: "3.12"
       - name: Allowlist and retry unit tests
         run: python -m unittest discover -s agent/tests -t agent -v
+      - name: Network firewall rule unit tests
+        run: python -m unittest discover -s tests/network -p 'test_*.py' -v
 
   secret-scan:
     name: Secret scan (gitleaks)
@@ -105,13 +107,12 @@ jobs:
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
         run: docker compose config --quiet
-      - name: Agent must not publish host ports
+      # Firewall rules (Control 1): only open-webui is published, on 127.0.0.1; the agent is on an
+      # internal network with no internet and cannot reach open-webui. See docs/network-firewall.md.
+      - name: Network segmentation and port exposure rules
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
-        run: |
-          ports=$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["adk-agent"].get("ports", []))')
-          echo "adk-agent ports: $ports"
-          test "$ports" = "[]"
+        run: docker compose config --format json | python3 tests/network/check_compose_network.py
 
   container-scan:
     name: Container and config scan (trivy)
