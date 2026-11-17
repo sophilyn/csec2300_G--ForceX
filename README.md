@@ -103,11 +103,24 @@ Every pull request also runs the CI security gates in
 | Change management | `main` requires all 6 security checks to pass and 1 approving review before merge. | Branch protection settings, blocked-merge demo PR #40 | 1.0 General Security Concepts |
 | Privacy-preserving logs | The agent logs file names, counts, and refusal reasons, never document contents. | `agent/gforcex_agent/tools.py` | 4.0 Security Operations |
 
-### Planned (not implemented yet)
-- Backup and restore of the Docker volumes, with a tested restore
-- Incident response plan
-- Encryption at rest for document and chat data
-- Host firewall rules
+### Tested manually by the team
+These controls were tested by hand in a team member's Windows environment, not by CI. Full write-up:
+[Security Testing Results Wiki page](https://github.com/sophilyn/csec2300_G--ForceX/wiki/Security-Testing-Results-%E2%80%93-Milestone-4).
+
+| Control | Team result | Evidence | SY0-701 domain |
+|---|---|---|---|
+| Firewall configuration | Passed with limitations: Windows Firewall on, Open WebUI localhost-only, Ollama port not published | [#10](https://github.com/sophilyn/csec2300_G--ForceX/issues/10) | 3.0 Security Architecture |
+| Security monitoring and audit logs | Passed initial tests: Open WebUI logs record activity; sampled logs did not contain test secrets | [#15](https://github.com/sophilyn/csec2300_G--ForceX/issues/15) | 4.0 Security Operations |
+| Data backup and recovery | Passed: sample documents and config backed up and restored; AES-256 encrypted USB backup verified | [#17](https://github.com/sophilyn/csec2300_G--ForceX/issues/17) | 3.0 Security Architecture |
+| Access control (Open WebUI) | Partially passed: unapproved project code not revealed; one response did not clearly refuse | [#12](https://github.com/sophilyn/csec2300_G--ForceX/issues/12) | 4.0 Security Operations |
+| Vulnerability scanning (Open WebUI image) | Improved in a separate test image: patched image had 0 fixable critical findings | [#20](https://github.com/sophilyn/csec2300_G--ForceX/issues/20) | 4.0 Security Operations |
+| Data encryption | Partially completed: device encryption on, encrypted backup, `.env` not tracked; service-to-service traffic is HTTP without TLS | [#23](https://github.com/sophilyn/csec2300_G--ForceX/issues/23) | 1.0 General Security Concepts |
+| Incident response | Passed a fictional exposed-API-key exercise | [#26](https://github.com/sophilyn/csec2300_G--ForceX/issues/26), [Incident Response Plan](https://github.com/sophilyn/csec2300_G--ForceX/wiki/G-FORCE-X-%E2%80%93-Incident-Response-Plan) | 4.0 Security Operations |
+
+### Planned (not done yet)
+- Full application recovery from backup, including Docker volumes (#17 follow-up)
+- TLS between services (#23 follow-up)
+- Decide whether the patched Open WebUI image replaces the current one (#20 follow-up)
 - Connecting Open WebUI to the ADK agent so chat questions also go through the document allowlist
 
 ## Known limitations
@@ -132,10 +145,10 @@ Every pull request also runs the CI security gates in
 
 ## Project team
 
-| Member | Contributions verified in Git history |
+| Member | Contributions verified in Git history and issue assignments |
 |---|---|
-| Sophia Gomez (`sophilyn`) | Repository setup, README, User Story 3 testing; pull-request reviews and approvals; `main` branch protection |
-| Karlie Garcia (`karliegj28`) | Docker Compose setup; ADK agent and allowlisted document tool; CI security gates; CVE fixes and risk register; prompt-injection test suite; ADK 2.x upgrade |
+| Sophia Gomez (`sophilyn`) | Repository setup and README; created the user-story task issues; firewall (#10) and access-control (#12) testing; backup (#17) and encryption (#23) testing with Karlie; pull-request reviews and approvals; `main` branch protection |
+| Karlie Garcia (`karliegj28`) | Docker Compose setup; ADK agent and allowlisted document tool; CI security gates; CVE fixes and risk register; prompt-injection test suite; ADK 2.x upgrade; logging (#15), vulnerability scanning (#20), and incident response (#26) testing; backup (#17) and encryption (#23) testing with Sophia; Wiki pages |
 
-This table lists only work visible in commits and pull requests. Team members should add other work
-(research, threat model, Wiki, slides, issue tracking) before final submission.
+This table lists only work visible in commits, pull requests, issue assignments, and Wiki history.
+Team members should add other work (research, threat model, slides) before final submission.
