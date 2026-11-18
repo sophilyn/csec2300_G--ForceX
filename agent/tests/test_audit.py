@@ -101,6 +101,19 @@ class AuditLogTests(unittest.TestCase):
         self.assertIn("../etc/passwd", recs[1]["name"])
         self.assertNotIn("Kite-55", self.path.read_text())
 
+    def test_events_inside_a_query_carry_its_query_id(self):
+        token = audit.set_query_id("abc123def456")
+        try:
+            self.log("document_served", name="notes.txt", bytes=10)
+            self.log("query_completed", query_id="explicit-id")  # an explicit id is never overwritten
+        finally:
+            audit.reset_query_id(token)
+        self.log("access_refused", name="'x'")  # outside the query: no id
+        recs = self.records()
+        self.assertEqual(recs[0]["query_id"], "abc123def456")
+        self.assertEqual(recs[1]["query_id"], "explicit-id")
+        self.assertNotIn("query_id", recs[2])
+
     def test_missing_log_folder_falls_back_to_stderr(self):
         os.environ["AUDIT_LOG_PATH"] = str(Path(self.tmp.name) / "missing" / "audit.jsonl")
         self._reset_logger()
@@ -136,6 +149,30 @@ class AuditReportTests(unittest.TestCase):
                  self.line("access_refused", ts="2026-11-17T21:00:00")]
         self.assertEqual(audit_report.summarize(lines, since="2026-11-17T20:00")["events"],
                          {"access_refused": 1})
+
+
+class WebuiReportTests(unittest.TestCase):
+    @staticmethod
+    def req(path, status, method="POST"):
+        # Format copied from a real Open WebUI v0.12.5 log line.
+        return (f'2026-11-18 01:59:51.028 | INFO     | uvicorn.protocols.http.httptools_impl:send:482 - '
+                f'172.19.0.1:0 - "{method} {path} HTTP/1.1" {status}')
+
+    def test_counts_signins_and_denied_requests(self):
+        lines = [self.req("/api/v1/auths/signin", 200), self.req("/api/v1/auths/signin", 400),
+                 self.req("/api/v1/chats/", 401, "GET"), self.req("/api/v1/chats/", 200, "GET"),
+                 "2026-11-18 01:59:50.809 | INFO | open_webui.models.auths:authenticate_user:336 - x"]
+        report = audit_report.summarize_webui(lines)
+        self.assertEqual(report["events"], {"signin_succeeded": 1, "signin_failed": 1, "request_denied": 1})
+        self.assertEqual(report["alerts"], [])
+
+    def test_alerts_on_repeated_failed_signins(self):
+        lines = [self.req("/api/v1/auths/signin", 400) for _ in range(audit_report.SIGNIN_FAILURE_ALERT_THRESHOLD)]
+        alerts = audit_report.summarize_webui(lines)["alerts"]
+        self.assertTrue(any("possible password guessing" in a for a in alerts))
+
+    def test_ignores_unrelated_lines(self):
+        self.assertEqual(audit_report.summarize_webui(["", "random text", '"GET / HTTP/1.1" 200'])["events"], {})
 
 
 if __name__ == "__main__":

@@ -53,6 +53,35 @@ report=$(agent python -m gforcex_agent.audit_report --since "$since"); report_rc
 echo "$report" | sed 's/^/      report: /'
 check "audit report raises an alert for the refused attempts (exit code 2)" '[ "$report_rc" -eq 2 ] && echo "$report" | grep -q "ALERT: 3 refused"'
 
+qid=$(printf '%s\n' "$log" | grep '"event": "query_received"' | head -1 | sed -E 's/.*"query_id": "([0-9a-f]+)".*/\1/')
+check "document access is linked to the question that caused it (same query_id $qid)" \
+  '[ -n "$qid" ] && has "\"event\": \"document_served\".*\"query_id\": \"$qid\""'
+
+echo "== Open WebUI sign-in monitoring =="
+# 5 sign-ins with a fake account and fake password, sent inside the Open WebUI container to its own port.
+webui_since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker compose exec -T open-webui python -c '
+import json, urllib.request, urllib.error
+for i in range(5):
+    req = urllib.request.Request("http://localhost:8080/api/v1/auths/signin", method="POST",
+        data=json.dumps({"email": "audit-test-%d@example.invalid" % i, "password": "not-a-real-password"}).encode(),
+        headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=10)
+    except urllib.error.HTTPError:
+        pass' 2>/dev/null && echo "made 5 failed sign-in attempts with a fake account"
+sleep 2
+webui_report=$(docker compose logs --no-log-prefix --no-color --since "$webui_since" open-webui 2>/dev/null \
+  | agent python -m gforcex_agent.audit_report --since "$since" --webui-log -)
+echo "$webui_report" | grep -E 'Open WebUI|ALERT: .*sign-ins' | sed 's/^/      report: /'
+check "failed sign-ins were recorded and the report raises an alert" \
+  'echo "$webui_report" | grep -q "\"signin_failed\": 5" && echo "$webui_report" | grep -q "possible password guessing"'
+check "the fake password does not appear in Open WebUI logs" \
+  '! docker compose logs --since "$webui_since" open-webui 2>/dev/null | grep -q "not-a-real-password"'
+review=$(bash tests/logging/review_logs.sh 1h 2>&1); review_rc=$?
+check "combined review script runs and reports alerts (exit code 2)" \
+  '[ "$review_rc" -eq 2 ] && echo "$review" | grep -q "G-ForceX log review"'
+
 echo "== Log storage =="
 for svc in ollama open-webui adk-agent; do
   cfg=$(docker inspect -f '{{json .HostConfig.LogConfig.Config}}' "$(docker compose ps -q "$svc" 2>/dev/null)" 2>/dev/null)

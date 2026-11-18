@@ -15,7 +15,7 @@ from google.adk.runners import InMemoryRunner
 from google.genai import types
 
 from .agent import root_agent
-from .audit import audit
+from .audit import audit, reset_query_id, set_query_id
 from .retry import looks_like_printed_tool_call
 
 APP = "gforcex"
@@ -29,6 +29,14 @@ async def ask(question: str, source: str = "cli") -> dict:
     """
     query_id = uuid.uuid4().hex[:12]
     started = time.monotonic()
+    token = set_query_id(query_id)  # document-tool events below get this query_id too
+    try:
+        return await _ask_audited(question, source, query_id, started)
+    finally:
+        reset_query_id(token)
+
+
+async def _ask_audited(question: str, source: str, query_id: str, started: float) -> dict:
     audit("query_received", query_id=query_id, source=source, question=question,
           question_chars=len(question))
     try:
