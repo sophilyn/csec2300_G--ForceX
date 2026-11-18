@@ -30,8 +30,18 @@ done
 
 BACKUP=$(cd "$(dirname "$BACKUP")" && pwd)/$(basename "$BACKUP")
 cd "$(dirname "$0")/.."
+# Compose needs WEBUI_SECRET_KEY to read its config, but .env may be missing (for example on a new
+# computer before restoring it). These commands only read the config or stop/start existing containers,
+# never create them, so a placeholder is safe. It is used only when neither the shell nor .env has a key.
+dc() {
+  if [[ -z "${WEBUI_SECRET_KEY:-}" ]] && ! grep -qs '^WEBUI_SECRET_KEY=.' .env; then
+    WEBUI_SECRET_KEY=placeholder-for-reading-config-only docker compose "$@"
+  else
+    docker compose "$@"
+  fi
+}
 HELPER_IMAGE="python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
-CURRENT=$(docker compose config --format json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
+CURRENT=$(dc config --format json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
 TARGET="${TARGET:-$CURRENT}"
 CONFIG_OUT="${CONFIG_OUT:-$(dirname "$BACKUP")/restored-config-$(date -u +%Y%m%dT%H%M%SZ)}"
 
@@ -79,7 +89,7 @@ if [[ "$TARGET" == "$CURRENT" && $ASSUME_YES -eq 0 ]]; then
   [[ "$answer" == "RESTORE" ]] || { echo "Cancelled. Nothing was changed."; exit 1; }
 fi
 if [[ "$TARGET" == "$CURRENT" ]]; then
-  docker compose stop >/dev/null 2>&1 || true
+  dc stop >/dev/null 2>&1 || true
 fi
 for tarfile in "$WORK"/data/volumes/*.tar; do
   short=$(basename "$tarfile" .tar)

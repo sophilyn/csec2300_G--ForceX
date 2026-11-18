@@ -27,20 +27,30 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$(dirname "$0")/.."
+# Compose needs WEBUI_SECRET_KEY to read its config, but .env may be missing (for example on a new
+# computer before restoring it). These commands only read the config or stop/start existing containers,
+# never create them, so a placeholder is safe. It is used only when neither the shell nor .env has a key.
+dc() {
+  if [[ -z "${WEBUI_SECRET_KEY:-}" ]] && ! grep -qs '^WEBUI_SECRET_KEY=.' .env; then
+    WEBUI_SECRET_KEY=placeholder-for-reading-config-only docker compose "$@"
+  else
+    docker compose "$@"
+  fi
+}
 HELPER_IMAGE="python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
-PROJECT=$(docker compose config --format json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
+PROJECT=$(dc config --format json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT="$DEST/gforcex-backup-$STAMP.tar.enc"
 
 mkdir -p "$DEST" && chmod 700 "$DEST"
 WORK=$(mktemp -d "$DEST/.work-XXXXXX")
-running=$(docker compose ps --services --status running 2>/dev/null || true)
+running=$(dc ps --services --status running 2>/dev/null || true)
 
 cleanup() {
   rm -rf "$WORK"
   if [[ -n "$running" ]]; then
     echo "Restarting: $(echo $running)"
-    docker compose start $running >/dev/null 2>&1 || echo "WARNING: could not restart services; run: docker compose up -d" >&2
+    dc start $running >/dev/null 2>&1 || echo "WARNING: could not restart services; run: docker compose up -d" >&2
   fi
 }
 trap cleanup EXIT
@@ -62,7 +72,7 @@ mkdir -p "$WORK/data/volumes" "$WORK/data/config"
 
 if [[ -n "$running" ]]; then
   echo "Stopping services for a consistent backup: $(echo $running)"
-  docker compose stop >/dev/null 2>&1
+  dc stop >/dev/null 2>&1
 fi
 
 volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")
@@ -81,7 +91,7 @@ cp approved_class_notes.txt "$WORK/data/config/" 2>/dev/null || true
 
 # Manifest: what is inside, plus a SHA-256 of every file. Restore checks these hashes,
 # so corruption or tampering inside the encrypted archive is detected.
-IMAGES=$(docker compose config --images 2>/dev/null | tr '\n' ' ')   # read here: the subshell below changes folder
+IMAGES=$(dc config --images 2>/dev/null | tr '\n' ' ')   # read here: the subshell below changes folder
 (
   cd "$WORK/data"
   {
