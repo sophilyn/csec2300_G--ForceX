@@ -17,17 +17,46 @@ services:
     logging: *default-logging
     restart: unless-stopped
 
+  # HTTPS reverse proxy (Control 6). The only service with host ports, both on 127.0.0.1.
+  # Browser -> https://localhost:3443 (TLS) -> proxy -> Open WebUI. See docs/encryption.md.
+  proxy:
+    image: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+    ports:
+      - "127.0.0.1:3443:8443"   # HTTPS
+      - "127.0.0.1:3000:8080"   # HTTP, only redirects to HTTPS
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # local CA + certificate private keys
+    networks:
+      - edge_net    # proxy <-> Open WebUI only; cannot reach Ollama or the ADK agent
+    logging: *default-logging
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /config
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE   # the caddy binary carries this file capability; it will not start without it
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - open-webui
+    restart: unless-stopped
+
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.12.5
-    ports:
-      - "127.0.0.1:3000:8080"
+    # No "ports:" — reachable from the browser only through the HTTPS proxy.
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      # Fails "docker compose up" if .env is missing or the key is empty (Control 6).
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?Set WEBUI_SECRET_KEY in .env (see README step 2)}
+      - WEBUI_URL=https://localhost:3443
     volumes:
       - webui_data:/app/backend/data
     networks:
-      - webui_net   # not on agent_net, so Open WebUI cannot reach the ADK agent
+      - webui_net   # Open WebUI <-> Ollama. Not on agent_net, so Open WebUI cannot reach the ADK agent
+      - edge_net    # HTTPS proxy -> Open WebUI
     logging: *default-logging
     depends_on:
       - ollama
@@ -64,6 +93,7 @@ services:
 
 # Firewall segmentation (Control 1). See docs/network-firewall.md.
 networks:
+  edge_net: {}     # proxy <-> Open WebUI (not internal: Docker needs it to publish the proxy's ports)
   webui_net: {}
   agent_net:
     internal: true   # Docker blocks all traffic between this network and the outside world
@@ -72,3 +102,4 @@ volumes:
   ollama_data:
   webui_data:
   agent_audit:
+  caddy_data:

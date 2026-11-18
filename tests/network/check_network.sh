@@ -27,7 +27,8 @@ from_host()      { python3 -c "$PROBE" "$1" "$2"; }
 from_container() { docker compose exec -T "$1" python3 -c "$PROBE" "$2" "$3" 2>/dev/null || echo "blocked (exec failed)"; }
 
 echo "== Allowed connections (the app needs these) =="
-check open    "Browser on this computer -> Open WebUI (127.0.0.1:3000)" "$(from_host 127.0.0.1 3000)"
+check open    "Browser on this computer -> HTTPS proxy (127.0.0.1:3443)" "$(from_host 127.0.0.1 3443)"
+check open    "Browser on this computer -> HTTP redirect (127.0.0.1:3000)" "$(from_host 127.0.0.1 3000)"
 check open    "Open WebUI -> Ollama (ollama:11434)"                      "$(from_container open-webui ollama 11434)"
 check open    "ADK agent -> Ollama (ollama:11434)"                       "$(from_container adk-agent ollama 11434)"
 
@@ -41,11 +42,17 @@ host_binds() {  # host_binds <service> -> "IP:port" lines for every published po
 published() { [[ -n "$(host_binds "$1")" ]] && echo "open (published: $(host_binds "$1" | tr '\n' ' '))" || echo "blocked (not published)"; }
 check blocked "This computer -> Ollama container (any port)"            "$(published ollama)"
 check blocked "This computer -> ADK agent container (any port)"         "$(published adk-agent)"
-check blocked "Open WebUI published on any address but 127.0.0.1" \
-  "$(host_binds open-webui | grep -qv '^127\.0\.0\.1:' && echo "open (non-localhost bind)" || echo "blocked (localhost only)")"
-lan_ip=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+check blocked "This computer -> Open WebUI plain HTTP (no proxy)"      "$(published open-webui)"
+check blocked "HTTPS proxy published on any address but 127.0.0.1" \
+  "$(host_binds proxy | grep -qv '^127\.0\.0\.1:' && echo "open (non-localhost bind)" || echo "blocked (localhost only)")"
+# Find this computer's LAN IPv4 address on macOS, Linux and Windows (Git Bash). A UDP "connect" only
+# picks the outgoing interface; no packet is sent. Anything that is not an IPv4 address is ignored, so a
+# broken lookup is reported as SKIP instead of a false PASS.
+lan_ip=$(python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("192.0.2.1", 9)); print(s.getsockname()[0])' 2>/dev/null | tr -d '\r')
+[[ "$lan_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && "$lan_ip" != 127.* ]] || lan_ip=""
 if [[ -n "${lan_ip:-}" ]]; then
-  check blocked "Other devices on the network -> Open WebUI (LAN IP:3000)" "$(from_host "$lan_ip" 3000)"
+  check blocked "Other devices on the network -> HTTPS proxy (LAN IP:3443)" "$(from_host "$lan_ip" 3443)"
+  check blocked "Other devices on the network -> HTTP redirect (LAN IP:3000)" "$(from_host "$lan_ip" 3000)"
 else
   echo "SKIP  no LAN IP found; cannot test access from other devices"
 fi

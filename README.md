@@ -10,10 +10,11 @@ not sent to an external AI service.
 
 ```mermaid
 flowchart LR
-    User["User's browser"] -->|"http://127.0.0.1:3000 (localhost only)"| WebUI
+    User["User's browser"] -->|"https://localhost:3443 (TLS 1.3, localhost only)"| Proxy
 
     subgraph Host["Your computer (Docker)"]
-        subgraph Net["Internal Docker network: no other host ports"]
+        Proxy["Caddy HTTPS proxy<br/>only service with host ports"] --> WebUI
+        subgraph Net["Private Docker networks: no other host ports"]
             WebUI["Open WebUI<br/>chat interface"] --> Ollama["Ollama<br/>local model: llama3.2:3b"]
             Agent["ADK agent (Google ADK + LiteLLM)<br/>non-root, read-only, no capabilities,<br/>no published port"] --> Ollama
             Agent --> Tool["get_approved_documents tool<br/>allowlist, path, type and size checks"]
@@ -29,8 +30,8 @@ flowchart LR
 
 - **Open WebUI and the ADK agent are separate.** Both use the same local Ollama, but Open WebUI does
   **not** call the agent yet. The agent is used from the command line, as shown below.
-- Ollama and the agent publish **no ports** to your computer. Only Open WebUI is reachable, and only from
-  this machine (`127.0.0.1`).
+- Ollama, Open WebUI and the agent publish **no ports** to your computer. The browser reaches Open WebUI only
+  through the HTTPS proxy, and only from this machine (`127.0.0.1`). See [docs/encryption.md](docs/encryption.md).
 - The agent can read only files mounted into `/data/approved`. Today that is just `approved_class_notes.txt`.
 
 ## Quickstart
@@ -56,8 +57,9 @@ The model runs on CPU, so answers can take 10–60 seconds.
    ```bash
    docker compose up -d --build
    ```
-   If you see `port is already allocated` for port 3000, another program (often a different Open WebUI) is
-   using it. Stop that program, then run the command again.
+   If you see `port is already allocated` for port 3000 or 3443, another program (often a different Open WebUI)
+   is using it. Stop that program, then run the command again. If you see `required variable WEBUI_SECRET_KEY
+   is missing a value`, you skipped step 2.
 
 4. **Download the model into Ollama (one time).**
    ```bash
@@ -70,8 +72,11 @@ The model runs on CPU, so answers can take 10–60 seconds.
    ```
    The agent answers from `approved_class_notes.txt` and lists the tools it called.
 
-6. **Optional: open the chat interface** at <http://localhost:3000>. The first start can take 1–2 minutes.
-   Create the first account, which becomes the admin.
+6. **Optional: open the chat interface** at <https://localhost:3443>. (<http://localhost:3000> redirects
+   there.) The first start can take 1–2 minutes. The browser warns about the certificate the first time,
+   because it comes from the project's own local certificate authority. The connection is still encrypted.
+   To remove the warning, see [docs/encryption.md](docs/encryption.md). Create the first account, which
+   becomes the admin.
 
 **Stop everything:** `docker compose down`. Your model and Open WebUI data are kept in Docker volumes.
 
@@ -82,6 +87,8 @@ The model runs on CPU, so answers can take 10–60 seconds.
 | Unit tests (allowlist, path traversal, symlinks, retry logic) | `python3 -m unittest discover -s agent/tests -p 'test_*.py'` | No |
 | Real agent ↔ Ollama tests (answers correctly, never leaks the unapproved file) | `docker compose exec -e GFORCEX_INTEGRATION=1 adk-agent python -m unittest discover -s /app/tests -p 'test_integration.py' -v` | Yes |
 | Indirect prompt-injection suite (4 attacks, 5 runs each, about 15 minutes) | `docker compose exec adk-agent python /app/tests/run_injection_suite.py --runs 5` | Yes |
+| Network firewall test (13 allowed and blocked connections) | `bash tests/network/check_network.sh` | Stack running |
+| Encryption test (TLS 1.3, HTTP redirect, secret key handling) | `bash tests/encryption/check_tls.sh` | Stack running |
 
 Results and methodology for the injection suite are in [docs/prompt-injection-tests.md](docs/prompt-injection-tests.md).
 Every pull request also runs the CI security gates in
@@ -94,10 +101,11 @@ Every pull request also runs the CI security gates in
 | Control | How it is enforced | Evidence | SY0-701 domain |
 |---|---|---|---|
 | Least-privilege document access | Agent has one tool with no arguments. The tool enforces a file-name allowlist, resolved-path containment (blocks `..` and symlink escapes), `.txt`/`.md` only, and size limits. Only the approved file is mounted, read-only. | `agent/tests/test_tools.py`, integration no-leak test | 3.0 Security Architecture |
-| Network minimization | Ollama and the agent publish no host ports. Open WebUI is bound to `127.0.0.1` only. CI fails any PR that publishes an agent port. | `docker-compose.yml`, CI job "Dockerfile lint and Compose validation", blocked-merge demo PR #40 | 3.0 Security Architecture |
+| Network minimization | Only the HTTPS proxy publishes host ports, bound to `127.0.0.1`. The agent is on an internal network with no internet. CI fails any PR that breaks these rules. | `docker-compose.yml`, CI job "Dockerfile lint and Compose validation", blocked-merge demo PR #40 | 3.0 Security Architecture |
 | Container hardening | Agent runs as non-root (UID 10001) with a read-only filesystem, all Linux capabilities dropped, and `no-new-privileges`. The agent's base image is pinned by digest; Ollama and Open WebUI are pinned by version tag. | `agent/Dockerfile`, `docker-compose.yml`, Trivy config scan | 4.0 Security Operations |
 | Prompt-injection mitigation | Documents are wrapped as untrusted data. Fake closing tags inside a document are removed, and a reminder follows the documents. Tested with 4 attacks. **Not complete:** one attack still changes the reply. | `docs/prompt-injection-tests.md` | 2.0 Threats, Vulnerabilities, and Mitigations |
-| Secrets management | Open WebUI secret key is read from an ignored `.env` file. `.gitignore` blocks keys and env files. gitleaks scans every PR. | `.gitignore`, `.env.example`, CI job "Secret scan" | 4.0 Security Operations |
+| Encryption in transit | The browser reaches Open WebUI only through a hardened Caddy HTTPS proxy (TLS 1.3, HSTS). Plain HTTP only redirects. Open WebUI has no host port. Container-to-container HTTP on private networks is accepted as RA-003. | `docs/encryption.md`, `tests/encryption/check_tls.sh`, CI network and Caddyfile checks | 1.0 General Security Concepts |
+| Secrets management | Open WebUI secret key is read from an ignored `.env` file, and Compose refuses to start without it. `.gitignore` blocks keys, certificates and env files. gitleaks scans every PR. | `.gitignore`, `.env.example`, CI jobs "Secret scan" and "Secret key is required" | 4.0 Security Operations |
 | Vulnerability management | bandit (code), pip-audit (dependencies), hadolint (Dockerfile), and Trivy (container image and config) run on every PR and fail on findings. | CI job logs on each PR | 4.0 Security Operations |
 | Risk acceptance with expiry | Any ignored vulnerability needs a register entry with an owner and review date. CI fails after the date passes. | `docs/risk-acceptance.md` | 5.0 Security Program Management and Oversight |
 | Change management | `main` requires all 6 security checks to pass and 1 approving review before merge. | Branch protection settings, blocked-merge demo PR #40 | 1.0 General Security Concepts |
@@ -119,7 +127,7 @@ These controls were tested by hand in a team member's Windows environment, not b
 
 ### Planned (not done yet)
 - Full application recovery from backup, including Docker volumes (#17 follow-up)
-- TLS between services (#23 follow-up)
+- TLS between containers: accepted for now as RA-003 (Ollama has no built-in TLS). The browser connection uses TLS.
 - Decide whether the patched Open WebUI image replaces the current one (#20 follow-up)
 - Connecting Open WebUI to the ADK agent so chat questions also go through the document allowlist
 
@@ -136,10 +144,11 @@ These controls were tested by hand in a team member's Windows environment, not b
 
 | Path | Contents |
 |---|---|
-| `docker-compose.yml` | Ollama, Open WebUI, and the hardened ADK agent |
+| `docker-compose.yml` | HTTPS proxy, Ollama, Open WebUI, and the hardened ADK agent |
+| `proxy/Caddyfile` | HTTPS proxy configuration (TLS, HTTP redirect) |
 | `agent/gforcex_agent/` | Agent definition, allowlisted document tool, command-line runner |
 | `agent/tests/` | Unit, integration, and prompt-injection tests |
-| `docs/` | Prompt-injection results, risk-acceptance register |
+| `docs/` | Control write-ups (firewall, audit logging, encryption), prompt-injection results, risk-acceptance register |
 | `.github/workflows/security-gates.yml` | CI security gates |
 | `approved_class_notes.txt` / `unapproved_policy.txt` | Fictional test documents (only the first is mounted) |
 

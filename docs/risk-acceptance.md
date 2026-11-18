@@ -5,8 +5,47 @@ Each entry is enforced in CI: the scanner ignores only the listed advisory ID, a
 `Dependency audit` job fails once the review date is reached. Closed entries are kept as a record:
 their ignore flag is removed from CI and their "Review by" row is replaced by a "Closed" row.
 
-**Current status (2026-11-13): no open risk acceptances.** RA-001 and RA-002 were both closed by the
-`google-adk` 2.14.1 upgrade; `pip-audit` reports no known vulnerabilities with no ignores.
+**Current status (2026-11-18): one open risk acceptance, RA-003** (plain HTTP between containers on private
+Docker networks). It is a design decision, not a scanner finding, so there is no `--ignore-vuln` flag, but CI
+still enforces its review date. RA-001 and RA-002 were both closed by the `google-adk` 2.14.1 upgrade;
+`pip-audit` reports no known vulnerabilities with no ignores.
+
+## RA-003: unencrypted HTTP between containers (OPEN)
+
+| Field | Value |
+|---|---|
+| Finding | Open WebUI → Ollama and ADK agent → Ollama use plain HTTP (`http://ollama:11434`), without TLS |
+| Severity | Low (confidentiality of prompts and answers on a private Docker network) |
+| Affected component | `docker-compose.yml`: `OLLAMA_BASE_URL`, `OLLAMA_API_BASE` |
+| Found by | Team encryption testing, issue #23 (Control 6), 2026-11-05 |
+| Fix | Not offered by Ollama itself: it has no built-in TLS. Would need a TLS proxy container per service and a private certificate authority |
+| Decision | Proposed for team acceptance on 2026-11-18 (owner: G-ForceX team) |
+| Review by | 2026-12-31 |
+
+**What the risk is:** prompts, document text sent to the model, and model answers cross the Docker network
+unencrypted. Something that could watch traffic on that network could read them.
+
+**Why the risk is low here (compensating controls):**
+- **The browser connection is encrypted.** Users reach Open WebUI only through the HTTPS proxy
+  (TLS 1.3, `https://localhost:3443`). Plain HTTP on port 3000 only redirects. See `docs/encryption.md`.
+- **The traffic never leaves this computer.** The containers talk over Docker's private networks inside one
+  host. Ollama and the agent publish no ports, and the agent's network is `internal: true` (no internet).
+  CI checks these rules on every pull request (Control 1, `docs/network-firewall.md`).
+- **Segmentation limits who could listen.** The HTTPS proxy cannot reach Ollama or the agent, and
+  Open WebUI cannot reach the agent. Reading the traffic would require control of the Docker host,
+  and anyone with that control can already read the containers' data directly.
+- **Data at rest is protected by host disk encryption** (Windows Device Encryption, issue #23).
+
+**Why not fix now:** Ollama has no TLS option. Adding a TLS proxy in front of Ollama would mean another
+container, a private certificate authority, and certificates trusted inside Open WebUI and the agent. That
+adds complexity and new failure points without protecting against a realistic attacker in this
+single-computer setup.
+
+**Exit plan:** if the services are ever split across more than one computer, or the Docker network is
+shared with untrusted containers, put a TLS proxy (for example Caddy) in front of Ollama and change
+`OLLAMA_BASE_URL` and `OLLAMA_API_BASE` to `https://`. Re-assess this entry by the review date either way.
+
+**Residual risk:** an attacker who already controls the Docker host could read prompts and answers in transit.
 
 ## RA-001: opentelemetry-api unbounded `tracestate` parsing (CLOSED)
 

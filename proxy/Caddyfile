@@ -1,0 +1,31 @@
+# G-ForceX HTTPS reverse proxy (Control 6: Data Encryption).
+# Encrypts traffic between the browser and Open WebUI with TLS. See docs/encryption.md.
+#
+# Inside the container Caddy listens on 8443 (HTTPS) and 8080 (HTTP redirect).
+# docker-compose.yml publishes them on this computer only:
+#   https://localhost:3443  -> Open WebUI over TLS
+#   http://localhost:3000   -> permanent redirect to the HTTPS address (no app traffic over HTTP)
+{
+	admin off              # no management API inside the container
+	auto_https disable_redirects
+	skip_install_trust     # never touch a trust store; the team installs the root cert by hand if wanted
+	default_sni 127.0.0.1  # clients send no SNI for an IP address; serve the 127.0.0.1 certificate then
+	servers {
+		protocols h1 h2
+	}
+}
+
+# "tls internal": Caddy creates its own local certificate authority and a certificate for
+# localhost / 127.0.0.1. The private keys stay in the caddy_data volume.
+https://localhost:8443, https://127.0.0.1:8443 {
+	tls internal
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy open-webui:8080
+}
+
+http://localhost:8080, http://127.0.0.1:8080 {
+	redir https://{host}:3443{uri} 308
+}

@@ -2,6 +2,14 @@
 
 **Type:** Preventive · **SY0-701:** 3.0 Security Architecture · **Status:** implemented and tested on 2026-11-17
 
+> **Update 2026-11-18 (Control 6):** Open WebUI no longer publishes a port. The browser reaches it only
+> through a Caddy **HTTPS proxy**, the only service with host ports: `127.0.0.1:3443` (TLS) and
+> `127.0.0.1:3000` (redirect to HTTPS). The proxy sits on a new `edge_net` with Open WebUI only, so it cannot
+> reach Ollama or the agent. The CI rules and `check_network.sh` were updated to match (now 13 checks,
+> **13 passed, 0 failed** on Windows). The LAN check also now finds the LAN IP correctly on Windows. Before,
+> `hostname -I` failed there and the check passed without testing anything. The design table and evidence
+> below are from 2026-11-17, before this change. See `docs/encryption.md`.
+
 ## Goal (from our control plan)
 > Configure Docker networking and firewall rules to limit access to the ports our application needs.
 > Verify that approved connections work and that unauthorized connections to restricted ports are blocked.

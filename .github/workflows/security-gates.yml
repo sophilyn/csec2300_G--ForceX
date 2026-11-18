@@ -20,7 +20,9 @@ concurrency:
 env:
   GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
   HADOLINT_IMAGE: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
-  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  # Must match the proxy image in docker-compose.yml.
+  CADDY_IMAGE: caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
+  TRIVY_IMAGE:aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
 
 jobs:
   unit-tests:
@@ -107,8 +109,20 @@ jobs:
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
         run: docker compose config --quiet
-      # Firewall rules (Control 1): only open-webui is published, on 127.0.0.1; the agent is on an
-      # internal network with no internet and cannot reach open-webui. See docs/network-firewall.md.
+      # Encryption (Control 6): Compose must refuse to start without a secret key. See docs/encryption.md.
+      - name: Secret key is required
+        run: |
+          if docker compose config --quiet 2>/dev/null; then
+            echo "FAIL: docker compose config succeeded without WEBUI_SECRET_KEY"; exit 1
+          fi
+          echo "PASS: Compose refuses to start without WEBUI_SECRET_KEY"
+      - name: HTTPS proxy config is valid (Caddyfile)
+        run: >
+          docker run --rm -v "$PWD/proxy/Caddyfile:/etc/caddy/Caddyfile:ro" "$CADDY_IMAGE"
+          caddy validate --config /etc/caddy/Caddyfile
+      # Firewall rules (Control 1, updated for Control 6): only the HTTPS proxy is published, on
+      # 127.0.0.1; the agent is on an internal network with no internet and cannot reach open-webui;
+      # the proxy cannot reach ollama or the agent. See docs/network-firewall.md.
       - name: Network segmentation and port exposure rules
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret

@@ -9,14 +9,15 @@ from check_compose_network import problems  # noqa: E402
 
 GOOD = {
     "services": {
+        "proxy": {"networks": {"edge_net": None},
+                  "ports": [{"target": 8443, "published": "3443", "host_ip": "127.0.0.1"},
+                            {"target": 8080, "published": "3000", "host_ip": "127.0.0.1"}]},
         "ollama": {"networks": {"webui_net": None, "agent_net": None}},
-        "open-webui": {"networks": {"webui_net": None},
-                       "ports": [{"target": 8080, "published": "3000", "host_ip": "127.0.0.1"}]},
+        "open-webui": {"networks": {"webui_net": None, "edge_net": None}},
         "adk-agent": {"networks": {"agent_net": None}},
     },
-    "networks": {"webui_net": {}, "agent_net": {"internal": True}},
+    "networks": {"edge_net": {}, "webui_net": {}, "agent_net": {"internal": True}},
 }
-
 
 class ComposeNetworkRules(unittest.TestCase):
     def check(self, mutate, expected_fragment):
@@ -36,8 +37,19 @@ class ComposeNetworkRules(unittest.TestCase):
         self.check(lambda c: c["services"]["ollama"].update(ports=[{"published": "11434", "host_ip": "127.0.0.1"}]),
                    "ollama publishes a host port")
 
-    def test_webui_on_all_interfaces_fails(self):
-        self.check(lambda c: c["services"]["open-webui"]["ports"][0].update(host_ip=""), "not bound to 127.0.0.1")
+    def test_proxy_on_all_interfaces_fails(self):
+        self.check(lambda c: c["services"]["proxy"]["ports"][0].update(host_ip=""), "not bound to 127.0.0.1")
+
+    def test_webui_publishing_plain_http_port_fails(self):
+        # Control 6: Open WebUI must be reached only through the HTTPS proxy.
+        self.check(lambda c: c["services"]["open-webui"].update(ports=[{"published": "3000", "host_ip": "127.0.0.1"}]),
+                   "open-webui publishes a host port")
+
+    def test_proxy_reaching_ollama_fails(self):
+        self.check(lambda c: c["services"]["proxy"]["networks"].update(webui_net=None), "proxy and ollama share")
+
+    def test_proxy_reaching_agent_fails(self):
+        self.check(lambda c: c["services"]["proxy"]["networks"].update(agent_net=None), "proxy and adk-agent share")
 
     def test_agent_internet_access_fails(self):
         self.check(lambda c: c["networks"]["agent_net"].pop("internal"), "not internal")
