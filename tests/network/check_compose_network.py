@@ -7,8 +7,10 @@ network segmentation:
 import json
 import sys
 
-PUBLIC_SERVICE = "open-webui"  # the only service allowed to publish a port to the host
+PUBLIC_SERVICE = "proxy"  # HTTPS reverse proxy (Control 6): the only service allowed to publish host ports
 AGENT = "adk-agent"
+# Services the public-facing proxy must never share a network with.
+BACKEND_SERVICES = ("ollama", AGENT)
 
 
 def problems(config: dict) -> list:
@@ -29,9 +31,16 @@ def problems(config: dict) -> list:
     for net in agent_nets:
         if not networks.get(net, {}).get("internal"):
             found.append(f"{AGENT} is on network '{net}', which is not internal (would allow internet access)")
-    shared = agent_nets & set(services.get(PUBLIC_SERVICE, {}).get("networks", {}))
+    shared = agent_nets & set(services.get("open-webui", {}).get("networks", {}))
     if shared:
-        found.append(f"{AGENT} and {PUBLIC_SERVICE} share network(s) {sorted(shared)}; they must be separated")
+        found.append(f"{AGENT} and open-webui share network(s) {sorted(shared)}; they must be separated")
+
+    proxy_nets = set(services.get(PUBLIC_SERVICE, {}).get("networks", {}))
+    for backend in BACKEND_SERVICES:
+        shared = proxy_nets & set(services.get(backend, {}).get("networks", {}))
+        if shared:
+            found.append(f"{PUBLIC_SERVICE} and {backend} share network(s) {sorted(shared)}; "
+                         f"the proxy may reach open-webui only")
     return found
 
 
@@ -40,8 +49,9 @@ def main() -> int:
     for p in found:
         print(f"FAIL: {p}")
     if not found:
-        print("PASS: only open-webui is published (127.0.0.1); every service has an explicit network; "
-              "the ADK agent is on internal networks only and shares none with open-webui")
+        print("PASS: only the HTTPS proxy is published (127.0.0.1); every service has an explicit network; "
+              "the ADK agent is on internal networks only and shares none with open-webui; "
+              "the proxy shares no network with ollama or the agent")
     return 1 if found else 0
 
 
