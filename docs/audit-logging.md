@@ -1,6 +1,6 @@
 # Control 2: Security monitoring and audit logs
 
-**Type:** Detective · **SY0-701:** 4.0 Security Operations · **Status:** implemented and tested on 2026-11-17
+**Type:** Detective · **SY0-701:** 4.0 Security Operations · **Status:** implemented and tested on 2026-11-17, extended on 2026-11-18
 
 ## Goal (from our control plan)
 > Use application and Docker logs to record relevant events. Avoid recording passwords, credentials,
@@ -29,6 +29,11 @@ and also to the container's error output.
 | `document_served` | An approved document was read | `name`, `bytes` |
 | `access_refused` | A request for a file that is not approved | requested `name`, `reason` |
 
+**Linking events to a question (added 2026-11-18):** while a question is being answered, every event carries
+that question's `query_id`, including the document tool's `documents_listed`, `document_served` and
+`access_refused`. A reviewer can see which question caused which file access. Events from outside a
+question, such as a direct call to the tool, have no `query_id`.
+
 **Privacy rules:**
 - **Question text is logged.** This was a team decision on 2026-11-17, to make investigations possible.
 - Before writing, anything that looks like a password, key or token is replaced with `[REDACTED]`. This covers `password=…`, `api_key: …`, `sk-…`, GitHub `ghp_…`, AWS `AKIA…`, JWTs, and long hex keys.
@@ -52,12 +57,39 @@ The report counts events and raises an **ALERT** (exit code 2) for:
 docker compose exec adk-agent python -m gforcex_agent.audit_report
 ```
 
-### 3. Docker log size limits (`docker-compose.yml`)
+### 3. Open WebUI sign-in monitoring (added 2026-11-18)
+Open WebUI logs every request with its status code, but nothing reviewed those lines. The report now also
+reads Open WebUI's log (`--webui-log`) and counts:
+- `signin_succeeded` / `signin_failed`: `POST /api/v1/auths/signin` with status 200, or with any 4xx;
+- `request_denied`: any other request answered with 401 or 403.
+
+It raises an **ALERT** for **5 or more failed sign-ins**, which may be password guessing. Open WebUI logs the
+email address that tried to sign in, but **never the password**. The live test checks this.
+
+### 4. One command for the whole review (`tests/logging/review_logs.sh`)
+```bash
+bash tests/logging/review_logs.sh        # last 24 hours
+bash tests/logging/review_logs.sh 2h     # or any window: 30m, 2h, 1d
+```
+It reviews the agent's audit log and Open WebUI's log together and prints one report. Exit code 0 means no alerts and 2 means alerts.
+Example output from the live test:
+```
+== G-ForceX log review: last 1h (since 2026-11-18T01:07:30.000+00:00) ==
+Events: {"access_refused": 3, "query_completed": 1, "query_received": 1}
+  refused at 2026-11-18T02:06:28.195+00:00: name="'../unapproved_policy.txt'" reason='Invalid document name'
+  ...
+Open WebUI: {"signin_failed": 5}
+ALERT: 3 refused document requests (threshold 3): possible attempt to read unapproved files
+ALERT: 5 failed Open WebUI sign-ins (threshold 5): possible password guessing
+```
+
+### 5. Docker log size limits (`docker-compose.yml`)
 All 3 containers use `json-file` with `max-size: 10m` and `max-file: 3`. CI fails any pull request that removes these limits.
 
 ## How to test
 ```bash
 bash tests/logging/check_audit_logs.sh   # live test, needs the stack running (about 1-2 minutes)
+bash tests/logging/review_logs.sh        # the review itself
 python3 -m unittest discover -s agent/tests -t agent   # unit tests, no Docker needed
 ```
 
@@ -111,6 +143,26 @@ Sample audit lines from that run (the question contained `password=Hunter2-audit
 
 **CI check:** the log-size rule passes on the new Compose file and fails on the old one: "services without log size limits: adk-agent, ollama, open-webui".
 
+## Evidence: Windows run (2026-11-18, Windows 11, Docker 29.8.0)
+The live test now has **18 checks**. It ran on Windows with the agent temporarily set to `llama3.2:1b`, because
+`llama3.2:3b` was not downloaded on that machine. Result: **15 passed, 3 failed**.
+- **All new checks passed:** 5 failed sign-ins were recorded and alerted, the fake password never appeared in
+  Open WebUI's logs, and the combined review script reported both alerts (exit code 2). Redaction, refusals,
+  log limits, folder permissions and restart survival also passed.
+- **The 3 failures were the model, not the logging.** In that run `llama3.2:1b` answered without calling
+  the document tool (`"tools_called": []`), so there was no `document_served` event to check. This is the 1b
+  reliability problem already noted in issue #27.
+- **The `query_id` link was confirmed separately:** a question answered with the tool produced
+  `query_received`, `documents_listed`, `document_served`, `documents_returned` and `query_completed`, all
+  with `"query_id": "28e7dd4888b2"`.
+- **To do:** rerun with `llama3.2:3b` (`docker compose exec ollama ollama pull llama3.2:3b`) and record an 18/18 result here.
+
+On Windows (Git Bash), run the live test with `MSYS_NO_PATHCONV=1` so Git Bash does not rewrite the
+container paths:
+```bash
+MSYS_NO_PATHCONV=1 bash tests/logging/check_audit_logs.sh
+```
+
 ## Open WebUI logs
 - Open WebUI's own application logs were tested by the team (issue #15).
 - They now go through Docker's size-limited logs:
@@ -120,7 +172,12 @@ Sample audit lines from that run (the question contained `password=Hunter2-audit
 
 ## Limitations
 - **Logged questions are sensitive data.** Redaction catches common secret formats, not every possible secret or personal detail. Treat the audit volume as private.
-- `document_served` and `access_refused` events have no `query_id`. Match them to a query by timestamp.
+- Document events have a `query_id` only when the tool runs during a question. Direct tool calls have none.
+- Sign-in monitoring depends on the format of Open WebUI's request log (checked with v0.12.5). If an upgrade
+  changes that format, the unit test with a real log line must be updated.
+- Sign-in failures are counted per review window, not per account or per minute. A slow guessing attack
+  below 5 failures per window is not flagged.
 - The agent's HTTP API (`adk api_server`, internal network only) records document events but not question text. Only the command-line runner records `query_*` events.
-- Logs stay on the same machine. There is no central log server, and nobody is paged on an alert; the report must be run by hand.
+- Logs stay on the same machine. There is no central log server, and nobody is paged on an alert. The
+  review (`tests/logging/review_logs.sh`) must be run by hand, for example before each demo or daily.
 - The log is not tamper-proof. Anyone with Docker access on the host can edit it. The report flags lines that are not valid JSON, but cannot detect careful edits.

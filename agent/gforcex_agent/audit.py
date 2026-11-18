@@ -11,6 +11,7 @@ Text that looks like a password, key or token is replaced with [REDACTED] first.
 
 Standard library only, so it can be unit-tested without ADK or Docker.
 """
+import contextvars
 import json
 import logging
 import logging.handlers
@@ -21,6 +22,20 @@ from datetime import datetime, timezone
 
 MAX_FIELD_CHARS = 500
 _LOGGER_NAME = "gforcex.audit"
+
+# The question currently being answered. run_query sets it, so events written deeper in the call
+# (for example document_served / access_refused from the document tool) carry the same query_id
+# and can be matched to the question that caused them.
+_current_query_id = contextvars.ContextVar("gforcex_query_id", default=None)
+
+
+def set_query_id(query_id):
+    """Marks later audit events in this context with query_id. Returns a token for reset_query_id."""
+    return _current_query_id.set(query_id)
+
+
+def reset_query_id(token) -> None:
+    _current_query_id.reset(token)
 
 # Secret-looking text. Order matters: "key = value" pairs first, then bare tokens.
 _SECRET_PATTERNS = [
@@ -79,6 +94,9 @@ def _logger() -> logging.Logger:
 def audit(event: str, **fields) -> dict:
     """Writes one audit event and returns the record that was written."""
     record = {"ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"), "event": event}
+    query_id = _current_query_id.get()
+    if query_id and "query_id" not in fields:
+        record["query_id"] = query_id
     record.update({k: _clean(v) for k, v in fields.items()})
     # ensure_ascii escapes newlines and control characters, so one event is always one line
     # (user text cannot forge extra log entries).

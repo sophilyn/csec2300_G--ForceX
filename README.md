@@ -101,7 +101,7 @@ Every pull request also runs the CI security gates in
 | Vulnerability management | bandit (code), pip-audit (dependencies), hadolint (Dockerfile), and Trivy (container image and config) run on every PR and fail on findings. | CI job logs on each PR | 4.0 Security Operations |
 | Risk acceptance with expiry | Any ignored vulnerability needs a register entry with an owner and review date. CI fails after the date passes. | `docs/risk-acceptance.md` | 5.0 Security Program Management and Oversight |
 | Change management | `main` requires all 6 security checks to pass and 1 approving review before merge. | Branch protection settings, blocked-merge demo PR #40 | 1.0 General Security Concepts |
-| Privacy-preserving logs | The agent logs file names, counts, and refusal reasons, never document contents. | `agent/gforcex_agent/tools.py` | 4.0 Security Operations |
+| Security monitoring and audit logs | The agent writes a JSON audit log: questions (secrets redacted), document access linked to each question by `query_id`, refusals, and outcomes. It never logs document contents or answers. A review script reads the audit log and Open WebUI's log together and alerts on 3+ refused file requests, failed queries, tampered lines, or 5+ failed sign-ins. All Docker logs are size-limited, which CI enforces. | `docs/audit-logging.md`, `tests/logging/check_audit_logs.sh`, `tests/logging/review_logs.sh` | 4.0 Security Operations |
 
 ### Tested manually by the team
 These controls were tested by hand in a team member's Windows environment, not by CI. Full write-up:
