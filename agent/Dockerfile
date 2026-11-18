@@ -13,7 +13,10 @@ COPY gforcex_agent/ /app/agents/gforcex_agent/
 COPY tests/ /app/tests/
 
 # Least privilege: run as an unprivileged user with no home-directory writes.
-RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin agent
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin agent \
+    && mkdir -p /var/log/gforcex \
+    && chown 10001:10001 /var/log/gforcex \
+    && chmod 0700 /var/log/gforcex
 USER 10001
 ENV HOME=/tmp PYTHONPATH=/app/agents
 

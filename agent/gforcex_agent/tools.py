@@ -10,12 +10,14 @@ Document text is returned wrapped in <untrusted_document> tags so the model
 treats it as data, not instructions. This reduces, but does not eliminate,
 prompt-injection risk.
 """
-import logging
 import os
 import re
 from pathlib import Path
 
-LOG = logging.getLogger("gforcex.tools")
+try:  # package import (agent) or direct import of this file (unit tests)
+    from .audit import audit
+except ImportError:
+    from audit import audit
 
 ALLOWED_SUFFIXES = (".txt", ".md")
 MAX_BYTES = 64 * 1024
@@ -59,7 +61,7 @@ def list_approved_documents() -> dict:
                 docs.append(_resolve(item.name).name)
             except ValueError:
                 continue
-    LOG.info("list_approved_documents count=%d", len(docs))
+    audit("documents_listed", count=len(docs))
     return {"status": "success", "documents": docs}
 
 
@@ -86,10 +88,10 @@ def get_approved_documents() -> dict:
             continue
         total += len(result["content"])
         if total > MAX_TOTAL_BYTES:
-            LOG.warning("get_approved_documents truncated at total cap")
+            audit("documents_truncated", limit_bytes=MAX_TOTAL_BYTES)
             break
         parts.append(result["content"])
-    LOG.info("get_approved_documents count=%d", len(parts))
+    audit("documents_returned", count=len(parts))
     if not parts:
         return {"status": "success", "documents": "No approved documents."}
     return {"status": "success", "documents": "\n\n".join(parts) + "\n\n" + AFTER_DOCUMENTS_REMINDER}
@@ -109,10 +111,10 @@ def read_approved_document(name: str) -> dict:
         path = _resolve(name)
         text = path.read_text(encoding="utf-8")
     except (ValueError, OSError, UnicodeDecodeError) as exc:
-        # Log the refusal reason and a truncated name only; never document contents.
-        LOG.warning("read_approved_document refused name=%r reason=%s", str(name)[:100], exc)
+        # Log the refusal reason and the requested name only; never document contents.
+        audit("access_refused", name=repr(name)[:100], reason=str(exc))
         return {"status": "error", "error_message": "Document is not available to the assistant."}
-    LOG.info("read_approved_document ok name=%s bytes=%d", path.name, len(text))
+    audit("document_served", name=path.name, bytes=len(text))
     return {
         "status": "success",
         "content": f"<untrusted_document name=\"{path.name}\">\n{_neutralize_tags(text)}\n</untrusted_document>",

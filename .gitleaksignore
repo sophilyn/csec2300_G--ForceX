@@ -1,0 +1,12 @@
+# Documented gitleaks false positives. Each line is one finding's fingerprint
+# (commit:file:rule:line). Fingerprints never contain the secret text itself.
+#
+# Every entry needs a reason. Do NOT add entries for real secrets: rotate the secret instead.
+#
+# Fake keys in the audit-log redaction tests (agent/tests/test_audit.py). They are
+# made-up values used to prove the audit log hides secrets. Team decision, 2026-11-17 (PR #47).
+# These fingerprints are tied to commit e5a3a2b, so merge PR #47 with a merge commit
+# (not squash or rebase), or the commit hash changes and the scan fails again.
+e5a3a2be3c2de47f5ae6fab18ed75f7220f09b8b:agent/tests/test_audit.py:generic-api-key:64
+e5a3a2be3c2de47f5ae6fab18ed75f7220f09b8b:agent/tests/test_audit.py:aws-access-token:65
+e5a3a2be3c2de47f5ae6fab18ed75f7220f09b8b:agent/tests/test_audit.py:aws-access-token:69
