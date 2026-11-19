@@ -39,7 +39,7 @@ flowchart LR
 |---|---|
 | The browser reaches Open WebUI only over TLS | The `proxy` service (Caddy) is the only service with host ports. Open WebUI has no `ports:`. CI fails a pull request that publishes an Open WebUI port |
 | Plain HTTP carries no app traffic | Port 3000 only answers with a `308` redirect to `https://localhost:3443` |
-| The browser keeps using HTTPS | `Strict-Transport-Security` (HSTS) header |
+| No HSTS on localhost | The proxy sends **no** `Strict-Transport-Security` header. Browsers apply HSTS to a host name on every port, so on `localhost` it would break the port-3000 redirect and other local apps for a year. `check_tls.sh` fails if the header appears |
 | Only this computer can connect | Both proxy ports are bound to `127.0.0.1`. CI checks this |
 | The proxy cannot reach the model or the agent | The proxy is only on `edge_net`, shared with Open WebUI. CI checks this |
 | The proxy is hardened | Read-only filesystem, all Linux capabilities dropped except `NET_BIND_SERVICE`, `no-new-privileges`, no admin API, image pinned by digest |
@@ -92,7 +92,7 @@ Compose file, the CI network check fails with `open-webui publishes a host port 
 PASS  https://localhost:3443 uses TLSv1.3 (TLS_AES_128_GCM_SHA256), certificate verified for localhost
 PASS  https://127.0.0.1:3443 uses TLSv1.3 (TLS_AES_128_GCM_SHA256), certificate verified for 127.0.0.1
 PASS  Open WebUI answers through the HTTPS proxy (/health -> 200 {"status":true})
-PASS  HSTS header tells the browser to use HTTPS only (max-age=31536000)
+PASS  no HSTS header (it would force HTTPS on every localhost port) (absent)
 PASS  http://localhost:3000 only redirects to HTTPS (308 -> https://localhost:3443/some/page)
 PASS  plain HTTP sent to the HTTPS port does not reach Open WebUI
 PASS  Open WebUI publishes no plain-HTTP port of its own

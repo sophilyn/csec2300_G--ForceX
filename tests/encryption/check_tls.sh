@@ -49,7 +49,9 @@ try:
     resp = conn.getresponse(); body = resp.read().decode(errors="replace")
     report(resp.status == 200, f"Open WebUI answers through the HTTPS proxy (/health -> {resp.status} {body.strip()[:40]})")
     hsts = resp.getheader("Strict-Transport-Security")
-    report(bool(hsts), f"HSTS header tells the browser to use HTTPS only ({hsts})")
+    # HSTS covers every port of a host name, so on localhost it would break the port-3000 redirect and
+    # other local apps. It must stay off; see the comment in proxy/Caddyfile.
+    report(not hsts, f"no HSTS header (it would force HTTPS on every localhost port) ({hsts or 'absent'})")
 except Exception as exc:
     report(False, f"HTTPS request to Open WebUI failed ({type(exc).__name__}: {exc})")
 
