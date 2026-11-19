@@ -20,6 +20,7 @@ RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin agent \
 USER 10001
 ENV HOME=/tmp PYTHONPATH=/app/agents
 
-# Listens only on the internal Docker network (no host port is published in compose).
+# Authenticated OpenAI-compatible API for Open WebUI (gforcex_agent/openai_api.py). Internal Docker
+# networks only; compose publishes no host port.
 EXPOSE 8000
-CMD ["adk", "api_server", "--host", "0.0.0.0", "--port", "8000", "/app/agents"]
+CMD ["python", "-m", "gforcex_agent.openai_api"]

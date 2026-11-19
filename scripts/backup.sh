@@ -27,15 +27,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$(dirname "$0")/.."
-# Compose needs WEBUI_SECRET_KEY to read its config, but .env may be missing (for example on a new
+# Compose needs WEBUI_SECRET_KEY and GFORCEX_AGENT_API_KEY to read its config, but .env may be missing (for example on a new
 # computer before restoring it). These commands only read the config or stop/start existing containers,
-# never create them, so a placeholder is safe. It is used only when neither the shell nor .env has a key.
+# never create them, so a placeholder is safe. Each is used only when neither the shell nor .env has that key.
 dc() {
-  if [[ -z "${WEBUI_SECRET_KEY:-}" ]] && ! grep -qs '^WEBUI_SECRET_KEY=.' .env; then
-    WEBUI_SECRET_KEY=placeholder-for-reading-config-only docker compose "$@"
-  else
-    docker compose "$@"
-  fi
+  local env_args=() key
+  for key in WEBUI_SECRET_KEY GFORCEX_AGENT_API_KEY; do
+    if [[ -z "$(printenv "$key")" ]] && ! grep -qs "^$key=." .env; then
+      env_args+=("$key=placeholder-for-reading-config-only")
+    fi
+  done
+  env ${env_args[@]+"${env_args[@]}"} docker compose "$@"
 }
 HELPER_IMAGE="python:3.12.16-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
 PROJECT=$(dc config --format json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')

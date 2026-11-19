@@ -108,6 +108,7 @@ jobs:
       - name: docker compose config
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+          GFORCEX_AGENT_API_KEY: ci-placeholder-not-a-secret
         run: docker compose config --quiet
       # Encryption (Control 6): Compose must refuse to start without a secret key. See docs/encryption.md.
       - name: Secret key is required
@@ -116,6 +117,10 @@ jobs:
             echo "FAIL: docker compose config succeeded without WEBUI_SECRET_KEY"; exit 1
           fi
           echo "PASS: Compose refuses to start without WEBUI_SECRET_KEY"
+          if WEBUI_SECRET_KEY=ci-placeholder docker compose config --quiet 2>/dev/null; then
+            echo "FAIL: docker compose config succeeded without GFORCEX_AGENT_API_KEY"; exit 1
+          fi
+          echo "PASS: Compose refuses to start without GFORCEX_AGENT_API_KEY"
       - name: HTTPS proxy config is valid (Caddyfile)
         run: >
           docker run --rm -v "$PWD/proxy/Caddyfile:/etc/caddy/Caddyfile:ro" "$CADDY_IMAGE"
@@ -126,12 +131,14 @@ jobs:
       - name: Network segmentation and port exposure rules
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+          GFORCEX_AGENT_API_KEY: ci-placeholder-not-a-secret
         run: docker compose config --format json | python3 tests/network/check_compose_network.py
       # Audit logs (Control 2): every container's Docker logs must be size-limited.
       # See docs/audit-logging.md.
       - name: Container log size limits
         env:
           WEBUI_SECRET_KEY: ci-placeholder-not-a-secret
+          GFORCEX_AGENT_API_KEY: ci-placeholder-not-a-secret
         run: |
           docker compose config --format json | python3 -c '
           import json, sys

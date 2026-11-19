@@ -83,14 +83,15 @@ echo "network_test_exit_code: $?" >> "$OUT/09-network-test.txt"
 
 step "secret check"
 # Compare against the real key without printing it; redact any copy that slipped into the evidence.
-key=$(grep -s '^WEBUI_SECRET_KEY=' .env | head -1 | cut -d= -f2-)
 redacted=0
-if [[ -n "$key" ]]; then
+for name in WEBUI_SECRET_KEY GFORCEX_AGENT_API_KEY; do
+  key=$(grep -s "^$name=" .env | head -1 | cut -d= -f2-)
+  [[ -n "$key" ]] || continue
   while IFS= read -r f; do
-    LC_ALL=C sed -i.bak "s/$(printf '%s' "$key" | sed 's/[][\.*^$/]/\\&/g')/[REDACTED-SECRET-KEY]/g" "$f" && rm -f "$f.bak"
+    LC_ALL=C sed -i.bak "s/$(printf '%s' "$key" | sed 's/[][\.*^$/]/\\&/g')/[REDACTED-$name]/g" "$f" && rm -f "$f.bak"
     redacted=$((redacted + 1))
   done < <(grep -rlF -- "$key" "$OUT" 2>/dev/null)
-fi
+done
 unset key
 echo "secret_key_copies_redacted: $redacted" >> "$OUT/01-metadata.txt"
 

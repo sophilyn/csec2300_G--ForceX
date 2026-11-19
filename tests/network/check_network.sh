@@ -24,13 +24,27 @@ check() {  # check <expected open|blocked> <description> <result>
 }
 
 from_host()      { python3 -c "$PROBE" "$1" "$2"; }
-from_container() { docker compose exec -T "$1" python3 -c "$PROBE" "$2" "$3" 2>/dev/null || echo "blocked (exec failed)"; }
+# Probe from inside a container with whatever it has: python3, bash (/dev/tcp) or nc. If none works,
+# report "untestable" (counts as FAIL), never "blocked": a check that cannot run must not pass.
+from_container() {
+  docker compose exec -T "$1" sh -c '
+    h=$1; p=$2
+    if command -v python3 >/dev/null 2>&1; then python3 -c "$3" "$h" "$p"
+    elif command -v bash >/dev/null 2>&1; then
+      if ! getent hosts "$h" >/dev/null 2>&1; then echo "blocked (name not resolvable)"
+      elif timeout 4 bash -c "exec 3<>/dev/tcp/$h/$p" 2>/dev/null; then echo open; else echo "blocked (no connection)"; fi
+    elif command -v nc >/dev/null 2>&1; then
+      if ! getent hosts "$h" >/dev/null 2>&1; then echo "blocked (name not resolvable)"
+      elif nc -z -w 4 "$h" "$p" 2>/dev/null; then echo open; else echo "blocked (no connection)"; fi
+    else echo "untestable (no probe tool)"; fi' sh "$2" "$3" "$PROBE" 2>/dev/null || echo "untestable (exec failed)"
+}
 
 echo "== Allowed connections (the app needs these) =="
 check open    "Browser on this computer -> HTTPS proxy (127.0.0.1:3443)" "$(from_host 127.0.0.1 3443)"
 check open    "Browser on this computer -> HTTP redirect (127.0.0.1:3000)" "$(from_host 127.0.0.1 3000)"
 check open    "Open WebUI -> Ollama (ollama:11434)"                      "$(from_container open-webui ollama 11434)"
 check open    "ADK agent -> Ollama (ollama:11434)"                       "$(from_container adk-agent ollama 11434)"
+check open    "Open WebUI -> ADK agent API (adk-agent:8000, key required)" "$(from_container open-webui adk-agent 8000)"
 
 echo "== Blocked connections (nothing should need these) =="
 # Ask Docker what each container publishes, instead of probing the port: another program on
@@ -56,8 +70,11 @@ if [[ -n "${lan_ip:-}" ]]; then
 else
   echo "SKIP  no LAN IP found; cannot test access from other devices"
 fi
-check blocked "ADK agent -> Open WebUI (open-webui:8080)"                "$(from_container adk-agent open-webui 8080)"
-check blocked "Open WebUI -> ADK agent (adk-agent:8000)"                 "$(from_container open-webui adk-agent 8000)"
+# Docker networks are not one-way: on the private agent_api_net link the agent can open a connection to
+# Open WebUI's port, but it holds no Open WebUI account or key. Reported as INFO so it is never hidden.
+echo "INFO  ADK agent -> Open WebUI (open-webui:8080): $(from_container adk-agent open-webui 8080) (shared private link; the agent has no Open WebUI credentials)"
+check blocked "HTTPS proxy -> ADK agent API (adk-agent:8000)"           "$(from_container proxy adk-agent 8000)"
+echo "INFO  Ollama -> ADK agent API (adk-agent:8000): $(from_container ollama adk-agent 8000) (they share agent_net so the agent can reach the model; every API request needs the key)"
 check blocked "ADK agent -> internet (1.1.1.1:443)"                      "$(from_container adk-agent 1.1.1.1 443)"
 
 echo "== Result: $pass passed, $fail failed =="
