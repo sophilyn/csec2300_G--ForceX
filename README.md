@@ -156,8 +156,40 @@ These controls were tested by hand in a team member's Windows environment, not b
 
 | Member | Contributions verified in Git history and issue assignments |
 |---|---|
-| Sophia Gomez (`sophilyn`) | Repository setup and README; created the user-story task issues; firewall (#10) and access-control (#12) testing; backup (#17) and encryption (#23) testing with Karlie; pull-request reviews and approvals; `main` branch protection |
-| Karlie Garcia (`karliegj28`) | Docker Compose setup; ADK agent and allowlisted document tool; CI security gates; CVE fixes and risk register; prompt-injection test suite; ADK 2.x upgrade; logging (#15), vulnerability scanning (#20), and incident response (#26) testing; backup (#17) and encryption (#23) testing with Sophia; Wiki pages |
+| Sophia Gomez (`sophilyn`) | Repository setup and README; created the user-story task issues; firewall (#10) and access-control (#12) testing; backup (#17) and encryption (#23) testing with Karlie; HTTPS proxy and required secret key (#48); audit-log question linking and sign-in alerts (#50); pull-request reviews, approvals and merges; `main` branch protection |
+| Karlie Garcia (`karliegj28`) | Docker Compose setup; ADK agent and allowlisted document tool; CI security gates; CVE fixes and risk register; prompt-injection test suite; ADK 2.x upgrade; network segmentation (#46), audit logging (#47), encrypted backup and recovery (#49, #51), incident response runbook and drill (#52); logging (#15), vulnerability scanning (#20), and incident response (#26) testing; backup (#17) and encryption (#23) testing with Sophia; README and Wiki final report |
 
-This table lists only work visible in commits, pull requests, issue assignments, and Wiki history.
-Team members should add other work (research, threat model, slides) before final submission.
+This table lists work visible in commits, pull requests, issue assignments, and Wiki history.
+Much of the implementation was developed with Claude Code, an AI coding assistant; those commits are marked
+`Co-Authored-By: Claude`, and every pull request was reviewed and approved by a team member.
+
+## Individual Contribution Summary Table
+
+Story points come from the user stories (label `user-story`) on the
+[project board](https://github.com/users/sophilyn/projects/3). **All 20 user stories are co-assigned to both
+members**, so each story's points are split equally.
+
+| Member | GitHub | Story points | Contribution |
+|---|---|---:|---:|
+| Sophia Gomez | `sophilyn` | 45.5 | 50% |
+| Karlie Garcia | `karliegj28` | 45.5 | 50% |
+| **Total** | | **91** | **100%** |
+
+<details>
+<summary>Story points per user story (from the project board, 2026-11-19)</summary>
+
+| Story | Points | Iteration | | Story | Points | Iteration |
+|---|---:|---|---|---|---:|---|
+| #1 Choose our security controls | 3 | 1 | | #53 Private AI agent on approved documents | 8 | 3 |
+| #8 Basic network protection | 3 | 2 | | #57 CI security gates | 5 | 3 |
+| #11 Limit access to approved documents | 5 | 2 | | #60 Prompt-injection tests and defenses | 5 | 3 |
+| #14 Keep track of important events | 3 | 2 | | #62 Network segmentation | 3 | 3 |
+| #16 Back up important files | 3 | 2 | | #64 Audit logging and log review | 5 | 3 |
+| #18 Find software security problems | 5 | 2 | | #67 HTTPS for browser traffic | 5 | 3 |
+| #22 Protect sensitive information | 8 | 2 | | #69 Encrypted backup and full recovery | 5 | 3 |
+| #24 Incident response plan | 5 | 2 | | #72 Incident response runbook and drill | 3 | 3 |
+| #27 Show that our controls work | 5 | 2 | | #74 README | 2 | 3 |
+| | | | | #77 Wiki final report | 5 | 3 |
+| | | | | #78 Final presentation and demo | 5 | 4 |
+
+</details>
