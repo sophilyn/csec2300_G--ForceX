@@ -11,3 +11,4 @@ __pycache__/
 backups/
 *.tar.gz
 *.crt
+tests/openwebui/results/

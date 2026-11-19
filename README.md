@@ -146,7 +146,7 @@ These controls were tested by hand in a team member's Windows environment, not b
 ## Known limitations
 - **Prompt-injection protection is not complete.** A small local model can still follow instructions hidden
   in a document. The agent's file access stayed limited in every test.
-- Normal users can only chat with the agent, which answers only from approved documents, and cannot attach files in the chat. But in Open WebUI v0.12.5 a signed-in user can still upload a file through the API (the upload permission only hides the button). **Admins** can still use the raw models and attach any file. See [docs/openwebui-access.md](docs/openwebui-access.md) and [docs/openwebui-agent.md](docs/openwebui-agent.md).
+- Normal users can only chat with the agent, which answers only from approved documents, and cannot attach files in the chat. But in Open WebUI v0.12.5 a signed-in user can still upload a file through the API (the upload permission only hides the button). **Admins** can still use the raw models and attach any file. The global Open WebUI filter in [docs/openwebui-guard.md](docs/openwebui-guard.md) drops unapproved attachments and redacts `Maple-739` on every model, but its live test is not recorded yet. See [docs/openwebui-access.md](docs/openwebui-access.md) and [docs/openwebui-agent.md](docs/openwebui-agent.md).
 - Chats with the agent answer only the latest question (no chat memory), and take 20–60 seconds on CPU.
 - On CPU, Ollama requests sometimes time out. The tests report these as errors, not as passes or failures.
 - Development used Claude Code, an AI coding assistant that runs on Anthropic's cloud. The application's own
