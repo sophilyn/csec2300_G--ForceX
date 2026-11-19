@@ -134,8 +134,7 @@ These controls were tested by hand in a team member's Windows environment, not b
 ## Known limitations
 - **Prompt-injection protection is not complete.** A small local model can still follow instructions hidden
   in a document. The agent's file access stayed limited in every test.
-- Open WebUI's own document upload does **not** use the agent's allowlist.
-- Open WebUI currently logs `CORS_ALLOW_ORIGIN` as `*` (any origin). Restricting it to localhost is planned.
+- Open WebUI's own document upload does **not** use the agent's allowlist. Normal users can no longer attach files, sign-up is off, and CORS is limited to our HTTPS address, but in Open WebUI v0.12.5 a signed-in user can still upload through the API. See [docs/openwebui-access.md](docs/openwebui-access.md).
 - On CPU, Ollama requests sometimes time out. The tests report these as errors, not as passes or failures.
 - Development used Claude Code, an AI coding assistant that runs on Anthropic's cloud. The application's own
   model runs only locally in Ollama.
