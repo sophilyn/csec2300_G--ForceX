@@ -16,7 +16,7 @@ A **global Filter Function**. It runs on every chat, for every model and every u
 | Stage | Action |
 |---|---|
 | `inlet` (before the model) | Removes attached files that are not approved, and knowledge collections whose ID is not allowed, from both `files` and `metadata.files`. Adds the security rules as the first system message on **every turn**, so a long chat cannot push them out of the context window. |
-| `stream` (while the reply is typed) | Replaces protected values (default: `Maple-739` and variants like `maple 7-3-9`) with `[REDACTED: unapproved source]`. It holds back the last 24 characters, so a value split across chunks is still caught. This also covers what **Read Aloud** speaks. |
+| `stream` (while the reply is typed) | Replaces protected values (default: `Maple-739`, also with any Unicode dash, spaces or markdown between characters, spelled letter by letter, full-width, or as `seven-three-nine`) with `[REDACTED: unapproved source]`. It holds back the last 80 characters, so a value split across chunks is still caught. This also covers what **Read Aloud** speaks. |
 | `outlet` (saved message) | Runs the same redaction again on the final stored reply. |
 | Audit log | JSONL at `/app/backend/data/audit/approved_docs_guard.jsonl` (on the `webui_data` volume, so it is included in backups). Events: `chat_request`, `unapproved_document_blocked` (file **names** only), `protected_value_redacted` (count only). It never logs document contents, replies, or the protected value. |
 
@@ -31,7 +31,7 @@ unapproved documents never reach the model (the inlet stage, plus keeping them o
 3. In the function's **Valves**:
    - `approved_file_ids`: the ID of the uploaded `approved_class_notes.txt` (Workspace → Knowledge → open the file; the ID is in the URL or in `GET /api/v1/files/`);
    - `allowed_knowledge_ids`: the ID of the approved collection, if you use one;
-   - `protected_patterns`: one regex per line, for any other values that must never be shown.
+   - `protected_values`: one value per line that must never be shown (variants are matched automatically); `protected_patterns`: optional extra regexes.
 4. Make sure `unapproved_policy.txt` is in **no** knowledge collection.
 
 ## How to test
@@ -55,7 +55,7 @@ Any leaked value is masked as `[LEAK]` in the CSV.
 redaction patterns, or the rules text. Fix it, re-run, and record the new CSV.
 
 ## Evidence
-- Unit tests: 8 passed (2026-11-19, local).
+- Unit tests: 11 passed (2026-11-19, local). Version 0.2.0 missed Unicode dashes (`Maple‑739`), letter-by-letter spelling and `seven-three-nine`; fixed in 0.3.0.
 - Live run on the stack: **not yet recorded.** Add the CSV summary here after the first run.
 
 ## Limits
