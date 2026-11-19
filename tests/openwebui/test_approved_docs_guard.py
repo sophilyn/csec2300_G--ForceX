@@ -79,6 +79,25 @@ class GuardTests(unittest.TestCase):
             o = self.f.outlet({"messages": [{"role": "assistant", "content": f"It is {v}."}]}, USER)
             self.assertNotIn("739", o["messages"][0]["content"].replace("-", "").replace(" ", ""), v)
 
+    def test_redacts_unicode_spelled_and_markdown_variants(self):
+        variants = ["Maple‑739", "Maple–739", "Maple—739", "Maple 739",
+                    "M-a-p-l-e-7-3-9", "M a p l e 7 3 9", "Maple-seven-three-nine", "maple seven three nine",
+                    "Ｍａｐｌｅ-７３９", "Maple**-**739", "**Maple**‑`739`",
+                    "MAPLE\n739"]
+        for v in variants:
+            out, hits = self.f._redact(f"The code is {v}.")
+            self.assertEqual(hits, 1, ascii(v))
+            self.assertNotRegex(out, r"(?i)maple|739", ascii(v))
+
+    def test_does_not_redact_unrelated_text(self):
+        for t in ("A maple tree grew in lab 739.", "Bluebird network, switch on port 7, VLAN 39"):
+            self.assertEqual(self.f._redact(t), (t, 0))
+
+    def test_stream_redacts_unicode_variant_split_across_chunks(self):
+        got = stream_all(self.f, ["Sure: M", "a-p-l-e", "‑seven-", "three-nine. Done", ""])
+        self.assertNotRegex(got, r"(?i)nine|739")
+        self.assertTrue(got.endswith("Done"), got)
+
     def test_audit_log_never_contains_secret(self):
         self.f.inlet({"messages": [], "files": [{"type": "file", "name": "unapproved_policy.txt"}]}, USER)
         stream_all(self.f, ["Maple-739", ""])
