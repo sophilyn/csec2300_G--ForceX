@@ -52,6 +52,15 @@ services:
       # Fails "docker compose up" if .env is missing or the key is empty (Control 6).
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?Set WEBUI_SECRET_KEY in .env (see README step 2)}
       - WEBUI_URL=https://localhost:3443
+      # Access control (Control 4). These settings come from this file on every start:
+      # without ENABLE_PERSISTENT_CONFIG=False, Open WebUI would keep older values from its database.
+      - ENABLE_PERSISTENT_CONFIG=False
+      - ENABLE_SIGNUP=False                     # no self sign-up; the admin creates accounts
+      - DEFAULT_USER_ROLE=pending               # any new account needs admin approval
+      - USER_PERMISSIONS_CHAT_FILE_UPLOAD=False  # normal users cannot attach files to chats
+      - USER_PERMISSIONS_CHAT_WEB_UPLOAD=False   # ...or pull in web pages as documents
+      - USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS=False  # ...or create document collections
+      - CORS_ALLOW_ORIGIN=https://localhost:3443;https://127.0.0.1:3443  # only our own HTTPS origin
     volumes:
       - webui_data:/app/backend/data
     networks:
