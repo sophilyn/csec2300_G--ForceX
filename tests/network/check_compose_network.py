@@ -31,9 +31,16 @@ def problems(config: dict) -> list:
     for net in agent_nets:
         if not networks.get(net, {}).get("internal"):
             found.append(f"{AGENT} is on network '{net}', which is not internal (would allow internet access)")
+    # Open WebUI may call the agent's API, but only over internal network(s) that no other service joins.
     shared = agent_nets & set(services.get("open-webui", {}).get("networks", {}))
-    if shared:
-        found.append(f"{AGENT} and open-webui share network(s) {sorted(shared)}; they must be separated")
+    for net in sorted(shared):
+        if not networks.get(net, {}).get("internal"):
+            found.append(f"{AGENT} and open-webui share network '{net}', which is not internal")
+        others = sorted(n for n, svc in services.items()
+                        if n not in (AGENT, "open-webui") and net in (svc.get("networks") or {}))
+        if others:
+            found.append(f"network '{net}' links {AGENT} and open-webui but also has {others}; "
+                         f"it must contain only those two")
 
     proxy_nets = set(services.get(PUBLIC_SERVICE, {}).get("networks", {}))
     for backend in BACKEND_SERVICES:
@@ -50,7 +57,7 @@ def main() -> int:
         print(f"FAIL: {p}")
     if not found:
         print("PASS: only the HTTPS proxy is published (127.0.0.1); every service has an explicit network; "
-              "the ADK agent is on internal networks only and shares none with open-webui; "
+              "the ADK agent is on internal networks only and shares only a private internal link with open-webui; "
               "the proxy shares no network with ollama or the agent")
     return 1 if found else 0
 

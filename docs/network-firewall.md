@@ -10,6 +10,14 @@
 > `hostname -I` failed there and the check passed without testing anything. The design table and evidence
 > below are from 2026-11-17, before this change. See `docs/encryption.md`.
 
+> **Update 2026-11-19 (Open WebUI → agent):** a new internal network, `agent_api_net`, links **only** Open WebUI
+> and the ADK agent, so chats go through the agent. Every request needs a shared API key. The agent stays
+> without internet or host ports. CI now allows Open WebUI and the agent to share a network only if it is
+> internal and has no other service on it. Docker networks are not one-way, so the agent can open a connection
+> to Open WebUI's port on that link; `check_network.sh` reports this as INFO. The live test now probes from
+> each container with whatever tool it has (python3, bash or nc) and reports "untestable" instead of
+> "blocked" when it cannot run. See `docs/openwebui-agent.md`.
+
 ## Goal (from our control plan)
 > Configure Docker networking and firewall rules to limit access to the ports our application needs.
 > Verify that approved connections work and that unauthorized connections to restricted ports are blocked.

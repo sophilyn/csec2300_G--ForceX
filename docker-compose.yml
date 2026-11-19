@@ -61,11 +61,22 @@ services:
       - USER_PERMISSIONS_CHAT_WEB_UPLOAD=False   # ...or pull in web pages as documents
       - USER_PERMISSIONS_WORKSPACE_KNOWLEDGE_ACCESS=False  # ...or create document collections
       - CORS_ALLOW_ORIGIN=https://localhost:3443;https://127.0.0.1:3443  # only our own HTTPS origin
+      # Connection to the G-ForceX ADK agent (OpenAI-compatible API, see agent/gforcex_agent/openai_api.py).
+      # Normal users only see models the admin shares; only the agent is shared (scripts/openwebui_register_agent.py).
+      - ENABLE_OPENAI_API=True
+      - OPENAI_API_BASE_URLS=http://adk-agent:8000/v1
+      - OPENAI_API_KEYS=${GFORCEX_AGENT_API_KEY:?Set GFORCEX_AGENT_API_KEY in .env (see README step 2)}
+      - ENABLE_FORWARD_USER_INFO_HEADERS=True   # the agent audits the user's ID and role (not name or e-mail)
+      # Background title/tag/follow-up generation would send extra, unlogged-by-user runs to the agent.
+      - ENABLE_TITLE_GENERATION=False
+      - ENABLE_TAGS_GENERATION=False
+      - ENABLE_FOLLOW_UP_GENERATION=False
     volumes:
       - webui_data:/app/backend/data
     networks:
-      - webui_net   # Open WebUI <-> Ollama. Not on agent_net, so Open WebUI cannot reach the ADK agent
-      - edge_net    # HTTPS proxy -> Open WebUI
+      - webui_net       # Open WebUI <-> Ollama
+      - edge_net        # HTTPS proxy -> Open WebUI
+      - agent_api_net   # Open WebUI -> ADK agent API (internal, key required). Not on agent_net.
     logging: *default-logging
     depends_on:
       - ollama
@@ -79,6 +90,7 @@ services:
       - GFORCEX_MODEL=ollama_chat/llama3.2:3b
       - APPROVED_DOCS_DIR=/data/approved
       - AUDIT_LOG_PATH=/var/log/gforcex/audit.jsonl
+      - GFORCEX_AGENT_API_KEY=${GFORCEX_AGENT_API_KEY:?Set GFORCEX_AGENT_API_KEY in .env (see README step 2)}
     volumes:
       # Least privilege: only the approved document is mounted, read-only.
       # unapproved_policy.txt is never visible to the agent.
@@ -87,7 +99,8 @@ services:
       - agent_audit:/var/log/gforcex
     # No "ports:" — the agent API is reachable only on the internal Docker network.
     networks:
-      - agent_net   # internal network: Ollama only, no internet, no Open WebUI
+      - agent_net       # internal: agent -> Ollama, no internet
+      - agent_api_net   # internal: Open WebUI -> agent API only
     logging: *default-logging
     read_only: true
     tmpfs:
@@ -106,6 +119,8 @@ networks:
   webui_net: {}
   agent_net:
     internal: true   # Docker blocks all traffic between this network and the outside world
+  agent_api_net:
+    internal: true   # Open WebUI <-> ADK agent only; no internet, no proxy, no Ollama
 
 volumes:
   ollama_data:

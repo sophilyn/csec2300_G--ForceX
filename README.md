@@ -15,7 +15,8 @@ flowchart LR
     subgraph Host["Your computer (Docker)"]
         Proxy["Caddy HTTPS proxy<br/>only service with host ports"] --> WebUI
         subgraph Net["Private Docker networks: no other host ports"]
-            WebUI["Open WebUI<br/>chat interface"] --> Ollama["Ollama<br/>local model: llama3.2:3b"]
+            WebUI["Open WebUI<br/>chat interface"] -->|"agent_api_net (internal)<br/>API key required"| Agent
+            WebUI -.->|"admin only"| Ollama["Ollama<br/>local model: llama3.2:3b"]
             Agent["ADK agent (Google ADK + LiteLLM)<br/>non-root, read-only, no capabilities,<br/>no published port"] --> Ollama
             Agent --> Tool["get_approved_documents tool<br/>allowlist, path, type and size checks"]
         end
@@ -28,8 +29,10 @@ flowchart LR
     end
 ```
 
-- **Open WebUI and the ADK agent are separate.** Both use the same local Ollama, but Open WebUI does
-  **not** call the agent yet. The agent is used from the command line, as shown below.
+- **Open WebUI chats go through the ADK agent.** Normal users see only one model, *G-ForceX Agent (approved
+  documents only)*, so every normal-user chat goes through the agent's document allowlist. Open WebUI reaches
+  the agent over a private internal network with a shared API key. The raw Ollama models are visible to the
+  admin only. See [docs/openwebui-agent.md](docs/openwebui-agent.md). The agent also works from the command line.
 - Ollama, Open WebUI and the agent publish **no ports** to your computer. The browser reaches Open WebUI only
   through the HTTPS proxy, and only from this machine (`127.0.0.1`). See [docs/encryption.md](docs/encryption.md).
 - The agent can read only files mounted into `/data/approved`. Today that is just `approved_class_notes.txt`.
@@ -47,10 +50,10 @@ The model runs on CPU, so answers can take 10–60 seconds.
    cd csec2300_G--ForceX
    ```
 
-2. **Create your `.env` file with a random Open WebUI secret key.** `.env` is ignored by Git, so the key is
-   never committed. This writes the key without printing it:
+2. **Create your `.env` file with two random keys:** the Open WebUI secret key and the key Open WebUI uses to
+   call the agent. `.env` is ignored by Git, so the keys are never committed. This writes them without printing them:
    ```bash
-   cp .env.example .env && sed -i.bak "s/^WEBUI_SECRET_KEY=.*/WEBUI_SECRET_KEY=$(openssl rand -hex 32)/" .env && rm .env.bak
+   cp .env.example .env && sed -i.bak -e "s/^WEBUI_SECRET_KEY=.*/WEBUI_SECRET_KEY=$(openssl rand -hex 32)/" -e "s/^GFORCEX_AGENT_API_KEY=.*/GFORCEX_AGENT_API_KEY=$(openssl rand -hex 32)/" .env && rm .env.bak
    ```
 
 3. **Start the stack.** The first run builds the agent image.
@@ -78,6 +81,14 @@ The model runs on CPU, so answers can take 10–60 seconds.
    To remove the warning, see [docs/encryption.md](docs/encryption.md). Create the first account, which
    becomes the admin.
 
+7. **Share the agent with normal users (one time, after the admin account exists).** This makes
+   *G-ForceX Agent* the only model normal users can see:
+   ```bash
+   docker compose exec -T open-webui python3 - < scripts/openwebui_register_agent.py
+   ```
+   Then create normal (non-admin) accounts in **Admin Panel → Users**. Admins bypass user permissions, so use a
+   normal account for everyday chats and demos.
+
 **Stop everything:** `docker compose down`. Your model and Open WebUI data are kept in Docker volumes.
 
 ## Testing
@@ -89,6 +100,8 @@ The model runs on CPU, so answers can take 10–60 seconds.
 | Indirect prompt-injection suite (4 attacks, 5 runs each, about 15 minutes) | `docker compose exec adk-agent python /app/tests/run_injection_suite.py --runs 5` | Yes |
 | Network firewall test (13 allowed and blocked connections) | `bash tests/network/check_network.sh` | Stack running |
 | Encryption test (TLS 1.3, HTTP redirect, secret key handling) | `bash tests/encryption/check_tls.sh` | Stack running |
+| Open WebUI access test (sign-up, CORS, normal-user permissions) | `bash tests/openwebui/check_access.sh` | Stack running |
+| Open WebUI → agent chat test (only the agent visible, Bluebird answered, no leak, API key, audit) | `bash tests/openwebui/check_agent_chat.sh` | Yes |
 
 Results and methodology for the injection suite are in [docs/prompt-injection-tests.md](docs/prompt-injection-tests.md).
 Every pull request also runs the CI security gates in
@@ -129,12 +142,12 @@ These controls were tested by hand in a team member's Windows environment, not b
 - Full application recovery from backup, including Docker volumes (#17 follow-up)
 - TLS between containers: accepted for now as RA-003 (Ollama has no built-in TLS). The browser connection uses TLS.
 - Decide whether the patched Open WebUI image replaces the current one (#20 follow-up)
-- Connecting Open WebUI to the ADK agent so chat questions also go through the document allowlist
 
 ## Known limitations
 - **Prompt-injection protection is not complete.** A small local model can still follow instructions hidden
   in a document. The agent's file access stayed limited in every test.
-- Open WebUI's own document upload does **not** use the agent's allowlist. Normal users can no longer attach files, sign-up is off, and CORS is limited to our HTTPS address, but in Open WebUI v0.12.5 a signed-in user can still upload through the API. See [docs/openwebui-access.md](docs/openwebui-access.md).
+- Normal users can only chat with the agent, which answers only from approved documents, and cannot attach files in the chat. But in Open WebUI v0.12.5 a signed-in user can still upload a file through the API (the upload permission only hides the button). **Admins** can still use the raw models and attach any file. See [docs/openwebui-access.md](docs/openwebui-access.md) and [docs/openwebui-agent.md](docs/openwebui-agent.md).
+- Chats with the agent answer only the latest question (no chat memory), and take 20–60 seconds on CPU.
 - On CPU, Ollama requests sometimes time out. The tests report these as errors, not as passes or failures.
 - Development used Claude Code, an AI coding assistant that runs on Anthropic's cloud. The application's own
   model runs only locally in Ollama.
