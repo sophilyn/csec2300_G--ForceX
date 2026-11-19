@@ -19,8 +19,10 @@
 # localhost / 127.0.0.1. The private keys stay in the caddy_data volume.
 https://localhost:8443, https://127.0.0.1:8443 {
 	tls internal
+	# No Strict-Transport-Security (HSTS) header: browsers apply HSTS to the whole host name, on every port.
+	# On localhost that would force HTTPS on http://localhost:3000 (breaking the redirect) and on other
+	# local apps for a year. check_tls.sh fails if the header comes back.
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		-Server
 	}
 	reverse_proxy open-webui:8080
