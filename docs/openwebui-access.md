@@ -58,6 +58,7 @@ Compensating controls:
 - Only admin-created and admin-approved accounts exist (sign-up off, new accounts `pending`).
 - The app is reachable only through the HTTPS proxy.
 - The **ADK agent** is the path that enforces the document allowlist.
+- A global Open WebUI filter drops unapproved attachments, including API uploads and admin chats with the raw models, and redacts `Maple-739`. See [openwebui-guard.md](openwebui-guard.md).
 
 Next steps:
 - Re-run this test after upgrading Open WebUI, because newer versions may check the permission on the server.

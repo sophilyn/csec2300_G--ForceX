@@ -40,6 +40,10 @@ jobs:
         run: python -m unittest discover -s agent/tests -t agent -v
       - name: Network firewall rule unit tests
         run: python -m unittest discover -s tests/network -p 'test_*.py' -v
+      - name: Open WebUI approved-docs guard unit tests
+        run: |
+          pip install pydantic==2.11.7
+          python -m unittest discover -s tests/openwebui -p 'test_*.py' -v
 
   secret-scan:
     name: Secret scan (gitleaks)
